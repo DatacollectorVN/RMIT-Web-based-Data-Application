@@ -1,0 +1,19 @@
+CREATE TABLE reviews (
+    id          UUID         PRIMARY KEY,
+    user_id     UUID         NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    product_id  UUID         NOT NULL REFERENCES products (id) ON DELETE CASCADE,
+    title       VARCHAR(255) NOT NULL,
+    content     TEXT         NOT NULL,
+    rating      SMALLINT     NOT NULL CHECK (rating BETWEEN 1 AND 5),
+    status      VARCHAR(20)  NOT NULL DEFAULT 'pending'
+                             CHECK (status IN ('pending', 'done')),
+    ai_label    BOOLEAN,
+    final_label BOOLEAN,
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_reviews_product_id        ON reviews (product_id);
+CREATE INDEX idx_reviews_user_id           ON reviews (user_id);
+CREATE INDEX idx_reviews_product_status    ON reviews (product_id, status);
+CREATE INDEX idx_reviews_created           ON reviews (created_at DESC);

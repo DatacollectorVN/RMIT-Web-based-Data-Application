@@ -1,0 +1,32 @@
+CREATE TABLE products (
+    id          UUID            PRIMARY KEY,
+    brand       VARCHAR(255)    NOT NULL,
+    name        VARCHAR(500)    NOT NULL,
+    description TEXT            NOT NULL,
+    price       DECIMAL(10, 2)  NOT NULL CHECK (price >= 0),
+    category    VARCHAR(100)    NOT NULL,
+    created_at  TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ     NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_products_brand    ON products (brand);
+CREATE INDEX idx_products_category ON products (category);
+CREATE INDEX idx_products_updated  ON products (updated_at DESC);
+
+CREATE TABLE photos (
+    id          UUID           PRIMARY KEY,
+    product_id  UUID           NOT NULL REFERENCES products (id) ON DELETE CASCADE,
+    url         TEXT           NOT NULL,
+    is_primary  BOOLEAN        NOT NULL DEFAULT false,
+    sort_order  INTEGER        NOT NULL DEFAULT 0,
+    is_active   BOOLEAN        NOT NULL DEFAULT true,
+    created_at  TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ    NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_photos_product_id ON photos (product_id);
+CREATE INDEX idx_photos_product_active_sort ON photos (product_id, is_active, sort_order);
+
+CREATE UNIQUE INDEX uq_photos_one_primary_active
+    ON photos (product_id)
+    WHERE is_primary = true AND is_active = true;
