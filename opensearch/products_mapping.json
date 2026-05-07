@@ -1,0 +1,18 @@
+{
+  "settings": {
+    "index": {
+      "knn": true
+    }
+  },
+  "mappings": {
+    "properties": {
+      "product_id": { "type": "keyword" },
+      "name": { "type": "text" },
+      "description": { "type": "text" },
+      "item_vector": {
+        "type": "knn_vector",
+        "dimension": 384
+      }
+    }
+  }
+}
