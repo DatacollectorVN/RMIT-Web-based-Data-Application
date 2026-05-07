@@ -34,23 +34,6 @@
 
 ---
 
-## 2. Spec index
-
-| Spec | Title | Status |
-|---|---|---|
-| SPEC-00 | Constitution (this document) | active |
-| SPEC-01 | Code structure & project organisation | active |
-| SPEC-02 | PostgreSQL schema & migrations | planned |
-| SPEC-03 | OpenSearch index mapping & search logic | planned |
-| SPEC-04 | Go API — auth endpoints | planned |
-| SPEC-05 | Go API — product & search endpoints (Task 1) | planned |
-| SPEC-06 | Go API — review & async AI label (Task 2) | planned |
-| SPEC-07 | Go API — recommendations (Task 3) | planned |
-| SPEC-08 | Python AI service — all three endpoints | planned |
-| SPEC-09 | Docker Compose & environment config | planned |
-
----
-
 ## 3. Architecture decisions (locked)
 
 These decisions are final. Individual specs must not contradict them.

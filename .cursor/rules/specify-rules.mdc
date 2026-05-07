@@ -9,6 +9,8 @@ alwaysApply: true
 Auto-generated from all feature plans. Last updated: 2026-05-07
 
 ## Active Technologies
+- Go 1.22 (API); SQL migrations (versioned files) + Migration runner per SPEC-00 (no ORM) (20260507-131123-postgres-schema-migrations)
+- PostgreSQL 16 (20260507-131123-postgres-schema-migrations)
 
 - Go 1.22 (minimum per SPEC-00); Python 3.11 (AI service) + Gin v1.10, pgx/v5 v5.5, golang-migrate v4, golang-jwt/jwt/v5 v5.2, opensearch-go/v4 v4.0, godotenv v1.5, google/uuid v1.6, golang.org/x/crypto (bcrypt); FastAPI 0.111, uvicorn 0.30, pydantic v2.x, sentence-transformers 3.0, scikit-learn 1.5, numpy 1.26, joblib 1.4 (20260507-122044-code-structure-organization)
 
@@ -29,6 +31,7 @@ cd src [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECHNOLO
 Go 1.22 (minimum per SPEC-00); Python 3.11 (AI service): Follow standard conventions
 
 ## Recent Changes
+- 20260507-131123-postgres-schema-migrations: Added Go 1.22 (API); SQL migrations (versioned files) + Migration runner per SPEC-00 (no ORM)
 
 - 20260507-122044-code-structure-organization: Added Go 1.22 (minimum per SPEC-00); Python 3.11 (AI service) + Gin v1.10, pgx/v5 v5.5, golang-migrate v4, golang-jwt/jwt/v5 v5.2, opensearch-go/v4 v4.0, godotenv v1.5, google/uuid v1.6, golang.org/x/crypto (bcrypt); FastAPI 0.111, uvicorn 0.30, pydantic v2.x, sentence-transformers 3.0, scikit-learn 1.5, numpy 1.26, joblib 1.4
 

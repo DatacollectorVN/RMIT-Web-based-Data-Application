@@ -2,10 +2,12 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: beauty-postgres
+    env_file:
+      - .env
     environment:
-      POSTGRES_USER: beautyapp
-      POSTGRES_PASSWORD: beautyapp
-      POSTGRES_DB: beautyapp
+      POSTGRES_USER: ${POSTGRES_USER:-beautyapp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-beautyapp}
+      POSTGRES_DB: ${POSTGRES_DB:-beautyapp}
     ports:
       - "5432:5432"
     volumes:
