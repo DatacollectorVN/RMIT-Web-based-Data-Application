@@ -1,54 +1,98 @@
-.PHONY: migratedb migratedbdown1 migratedb-down-1 migratedbreapply snapshotdb \
+# Root Makefile — Docker orchestration + delegation to app/Makefile for Python logic.
+#
+# Python targets (migratedb, snapshotdb, etc.) are handled by app/Makefile
+# and run via `uv run` inside the app/ virtual environment.
+#
+# To run Python targets directly:  make -C app migratedb
+# To install the Python venv:      make install
+
+.PHONY: install upgrade \
+	migratedb migratedbdown1 migratedb-down-1 migratedbreapply migratestatus \
+	snapshotdb \
 	opensearchinit opensearch-init \
 	reindexproducts reindex-products \
 	indexproducts index-products \
+	relevancecheck relevance-check \
+	dev \
 	dockerbuild dockerup dockerdown dockerrestart
 
-# Load environment variables from .env if present.
-ifneq (,$(wildcard .env))
-include .env
-export
-endif
+# ──────────────────────────────────────────────
+# Package management (delegates to app/)
+# ──────────────────────────────────────────────
 
-# Apply all migrations using golang-migrate CLI.
-# Usage:
-#   cp .env.example .env
-#   make migratedb
+install:
+	$(MAKE) -C app install
+
+upgrade:
+	$(MAKE) -C app upgrade
+
+# ──────────────────────────────────────────────
+# Database migrations (delegates to app/)
+# ──────────────────────────────────────────────
+
 migratedb:
-	@test -n "$(DATABASE_URL)" || (echo "DATABASE_URL is not set"; exit 1)
-	migrate -path ./migrations -database "$(DATABASE_URL)" up
+	$(MAKE) -C app migratedb
 
-# Roll back one migration step.
 migratedbdown1:
-	@test -n "$(DATABASE_URL)" || (echo "DATABASE_URL is not set"; exit 1)
-	migrate -path ./migrations -database "$(DATABASE_URL)" down 1
+	$(MAKE) -C app migratedbdown1
 
-# Drop all applied migrations and reapply from scratch.
+# Alias (legacy dashed name).
+migratedb-down-1: migratedbdown1
+
 migratedbreapply:
-	@test -n "$(DATABASE_URL)" || (echo "DATABASE_URL is not set"; exit 1)
-	migrate -path ./migrations -database "$(DATABASE_URL)" down -all
-	migrate -path ./migrations -database "$(DATABASE_URL)" up
+	$(MAKE) -C app migratedbreapply
 
-# Load snapshot/sample data into current database.
+migratestatus:
+	$(MAKE) -C app migratestatus
+
+# ──────────────────────────────────────────────
+# Seed data (delegates to app/)
+# ──────────────────────────────────────────────
+
 snapshotdb:
-	@test -n "$(DATABASE_URL)" || (echo "DATABASE_URL is not set"; exit 1)
-	psql "$(DATABASE_URL)" -f ./scripts/snapshot_seed.sql
+	$(MAKE) -C app snapshotdb
 
-# Create OpenSearch index (idempotent create).
+# ──────────────────────────────────────────────
+# OpenSearch
+# ──────────────────────────────────────────────
+
+# Create/verify the OpenSearch products index (idempotent).
 opensearchinit:
 	@bash ./opensearch/init.sh
 
 # Alias (legacy dashed name).
 opensearch-init: opensearchinit
 
-# Reindex PostgreSQL products into OpenSearch.
+# Reindex PostgreSQL products into OpenSearch (delegates to app/).
 reindexproducts:
-	@test -n "$(DATABASE_URL)" || (echo "DATABASE_URL is not set"; exit 1)
-	@test -n "$(OPENSEARCH_URL)" || (echo "OPENSEARCH_URL is not set"; exit 1)
-	cd ./scripts && go mod tidy && go run ./reindex_products.go
+	$(MAKE) -C app reindexproducts
+
+# Alias (legacy dashed name).
+reindex-products: reindexproducts
 
 # Convenience: init mapping then reindex.
 indexproducts: opensearchinit reindexproducts
+
+# Alias (legacy dashed name).
+index-products: indexproducts
+
+# Keyword relevance check (delegates to app/).
+relevancecheck:
+	$(MAKE) -C app relevancecheck
+
+# Alias (legacy dashed name).
+relevance-check: relevancecheck
+
+# ──────────────────────────────────────────────
+# Local dev server (delegates to app/)
+# ──────────────────────────────────────────────
+
+dev:
+	$(MAKE) -C app dev
+
+# ──────────────────────────────────────────────
+# Docker
+# ──────────────────────────────────────────────
 
 dockerbuild:
 	docker compose build

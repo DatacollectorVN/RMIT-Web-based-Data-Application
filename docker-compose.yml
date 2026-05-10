@@ -13,7 +13,7 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U rmit -d rmit"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rmit} -d ${POSTGRES_DB:-rmit}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -41,45 +41,27 @@ services:
       timeout: 10s
       retries: 10
 
-  # ai-service:
-  #   build:
-  #     context: ./ai-service
-  #     dockerfile: Dockerfile
-  #   container_name: rmit-ai-service
-  #   env_file:
-  #     - .env
-  #   ports:
-  #     - "8000:8000"
-  #   healthcheck:
-  #     test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health >/dev/null || exit 1"]
-  #     interval: 10s
-  #     timeout: 5s
-  #     retries: 6
-
-  backend:
+  app:
     build:
-      context: ./backend
+      context: ./app
       dockerfile: Dockerfile
-    container_name: rmit-backend
+    container_name: rmit-app
     depends_on:
       postgres:
         condition: service_healthy
       opensearch:
         condition: service_healthy
-      # ai-service:
-      #   condition: service_healthy
     env_file:
       - .env
     environment:
-      # Force in-container connectivity (host .env uses localhost).
-      DATABASE_URL: postgres://${POSTGRES_USER:-rmit}:${POSTGRES_PASSWORD:-rmit}@postgres:5432/${POSTGRES_DB:-rmit}?sslmode=disable
+      # Override host-side localhost URLs with container-internal service names.
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-rmit}:${POSTGRES_PASSWORD:-rmit}@postgres:5432/${POSTGRES_DB:-rmit}
       OPENSEARCH_URL: http://opensearch:9200
       OPENSEARCH_INDEX_PRODUCTS: ${OPENSEARCH_INDEX_PRODUCTS:-products}
-      AI_SERVICE_URL: http://ai-service:8000
     ports:
       - "8080:8080"
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/api/v1/health >/dev/null || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 6
