@@ -1,29 +1,30 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: beauty-postgres
+    container_name: rmit-postgres
     env_file:
       - .env
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-beautyapp}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-beautyapp}
-      POSTGRES_DB: ${POSTGRES_DB:-beautyapp}
+      POSTGRES_USER: ${POSTGRES_USER:-rmit}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rmit}
+      POSTGRES_DB: ${POSTGRES_DB:-rmit}
     ports:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U beautyapp -d beautyapp"]
+      test: ["CMD-SHELL", "pg_isready -U rmit -d rmit"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   opensearch:
     image: opensearchproject/opensearch:2.13.0
-    container_name: beauty-opensearch
+    container_name: rmit-opensearch
     environment:
       discovery.type: single-node
-      plugins.security.disabled: "true"
+      DISABLE_SECURITY_PLUGIN: "true"
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
       bootstrap.memory_lock: "true"
       OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
     ports:
@@ -40,35 +41,41 @@ services:
       timeout: 10s
       retries: 10
 
-  ai-service:
-    build:
-      context: ./ai-service
-      dockerfile: Dockerfile
-    container_name: beauty-ai-service
-    env_file:
-      - .env
-    ports:
-      - "8000:8000"
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health >/dev/null || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 6
+  # ai-service:
+  #   build:
+  #     context: ./ai-service
+  #     dockerfile: Dockerfile
+  #   container_name: rmit-ai-service
+  #   env_file:
+  #     - .env
+  #   ports:
+  #     - "8000:8000"
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health >/dev/null || exit 1"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 6
 
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: beauty-backend
+    container_name: rmit-backend
     depends_on:
       postgres:
         condition: service_healthy
       opensearch:
         condition: service_healthy
-      ai-service:
-        condition: service_healthy
+      # ai-service:
+      #   condition: service_healthy
     env_file:
       - .env
+    environment:
+      # Force in-container connectivity (host .env uses localhost).
+      DATABASE_URL: postgres://${POSTGRES_USER:-rmit}:${POSTGRES_PASSWORD:-rmit}@postgres:5432/${POSTGRES_DB:-rmit}?sslmode=disable
+      OPENSEARCH_URL: http://opensearch:9200
+      OPENSEARCH_INDEX_PRODUCTS: ${OPENSEARCH_INDEX_PRODUCTS:-products}
+      AI_SERVICE_URL: http://ai-service:8000
     ports:
       - "8080:8080"
     healthcheck:
