@@ -6,37 +6,53 @@ alwaysApply: true
 
 # RMIT-Web-based-Data-Application Development Guidelines
 
-Auto-generated from all feature plans. Last updated: 2026-05-07
+Auto-generated from all feature plans. Last updated: 2026-05-10 (constitution v2.0)
 
 ## Active Technologies
-- Go 1.22 (API); SQL migrations (versioned files) + Migration runner per SPEC-00 (no ORM) (20260507-131123-postgres-schema-migrations)
-- PostgreSQL 16 (20260507-131123-postgres-schema-migrations)
-- Go 1.22 (search orchestration), Python 3.11 (embedding support), JSON mapping artifacts + OpenSearch Go client, sentence-transformers embeddings pipeline (existing AI service), Docker Compose local OpenSearch (20260507-154133-opensearch-search-logic)
-- OpenSearch `products` index + PostgreSQL source-of-truth data (20260507-154133-opensearch-search-logic)
+- Python 3.11 + FastAPI 0.111, uvicorn 0.30, SQLAlchemy 2.0 (async), asyncpg 0.29, opensearch-py 2.6, pydantic v2.7, python-jose 3.3, passlib[bcrypt] 1.7, sentence-transformers 3.0, scikit-learn 1.5, numpy 1.26, joblib 1.4, python-dotenv 1.0, uv (installer) (20260510-145455-python-app-consolidation)
+- PostgreSQL 16 (via SQLAlchemy async), OpenSearch 2.13 (via opensearch-py) (20260510-145455-python-app-consolidation)
 
-- Go 1.22 (minimum per SPEC-00); Python 3.11 (AI service) + Gin v1.10, pgx/v5 v5.5, golang-migrate v4, golang-jwt/jwt/v5 v5.2, opensearch-go/v4 v4.0, godotenv v1.5, google/uuid v1.6, golang.org/x/crypto (bcrypt); FastAPI 0.111, uvicorn 0.30, pydantic v2.x, sentence-transformers 3.0, scikit-learn 1.5, numpy 1.26, joblib 1.4 (20260507-122044-code-structure-organization)
+**Primary stack (SPEC-00 v2.0 — Go retired, unified Python `app` service)**
+
+- Python 3.11 · FastAPI 0.111 · uvicorn 0.30 · pydantic v2.7
+- SQLAlchemy 2.0 (async ORM) · asyncpg 0.29 (PostgreSQL async driver)
+- opensearch-py 2.6 (OpenSearch client — replaces opensearch-go)
+- sentence-transformers 3.0 · scikit-learn 1.5 · numpy 1.26 · joblib 1.4
+- python-jose 3.3 (JWT) · passlib[bcrypt] 1.7
+- golang-migrate v4 (SQL migration runner — kept for existing migration files)
+- PostgreSQL 16 · OpenSearch 2.13
 
 ## Project Structure
 
 ```text
-backend/
-frontend/
-tests/
+app/          ← unified Python service (FastAPI + SQLAlchemy + opensearch-py + AI/ML)
+migrations/   ← golang-migrate SQL files (existing, keep as-is)
+opensearch/   ← index mapping JSON + init.sh
+scripts/      ← reindex_products.go, snapshot_seed.sql, search_relevance_check.sh
 ```
 
 ## Commands
 
-cd src [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECHNOLOGIES] pytest [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECHNOLOGIES] ruff check .
+```bash
+# Run app locally
+cd app && uv pip install -r requirements.txt
+uvicorn main:app --host 0.0.0.0 --port 8080 --reload
+
+# Lint / format
+ruff check app/
+ruff format app/
+
+# Tests
+pytest app/tests/
+```
 
 ## Code Style
 
-Go 1.22 (minimum per SPEC-00); Python 3.11 (AI service): Follow standard conventions
+Python 3.11: follow PEP 8, use `ruff` for lint/format, `snake_case` for files and functions, `PascalCase` for classes and SQLAlchemy models, `PascalCase` + suffix for Pydantic schemas (e.g. `ProductResponse`).
 
 ## Recent Changes
-- 20260507-154133-opensearch-search-logic: Added Go 1.22 (search orchestration), Python 3.11 (embedding support), JSON mapping artifacts + OpenSearch Go client, sentence-transformers embeddings pipeline (existing AI service), Docker Compose local OpenSearch
-- 20260507-131123-postgres-schema-migrations: Added Go 1.22 (API); SQL migrations (versioned files) + Migration runner per SPEC-00 (no ORM)
-
-- 20260507-122044-code-structure-organization: Added Go 1.22 (minimum per SPEC-00); Python 3.11 (AI service) + Gin v1.10, pgx/v5 v5.5, golang-migrate v4, golang-jwt/jwt/v5 v5.2, opensearch-go/v4 v4.0, godotenv v1.5, google/uuid v1.6, golang.org/x/crypto (bcrypt); FastAPI 0.111, uvicorn 0.30, pydantic v2.x, sentence-transformers 3.0, scikit-learn 1.5, numpy 1.26, joblib 1.4
+- 20260510-145455-python-app-consolidation: Added Python 3.11 + FastAPI 0.111, uvicorn 0.30, SQLAlchemy 2.0 (async), asyncpg 0.29, opensearch-py 2.6, pydantic v2.7, python-jose 3.3, passlib[bcrypt] 1.7, sentence-transformers 3.0, scikit-learn 1.5, numpy 1.26, joblib 1.4, python-dotenv 1.0, uv (installer)
+- 20260510-constitution-v2: Retired Go backend; merged backend + ai-service into unified Python `app`; adopted SQLAlchemy ORM + opensearch-py
 
 <!-- MANUAL ADDITIONS START -->
 <!-- MANUAL ADDITIONS END -->

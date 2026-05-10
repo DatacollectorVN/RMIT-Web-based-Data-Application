@@ -1,0 +1,28 @@
+[project]
+name = "beauty-app"
+version = "1.0.0"
+description = "Beauty App — unified Python API + AI/ML service"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi==0.111.0",
+    "uvicorn==0.30.1",
+    "sqlalchemy==2.0.31",
+    "asyncpg==0.29.0",
+    "opensearch-py==2.6.0",
+    "pydantic==2.7.4",
+    "pydantic-settings==2.3.4",
+    "python-jose[cryptography]==3.3.0",
+    "passlib[bcrypt]==1.7.4",
+    "sentence-transformers==3.0.1",
+    "scikit-learn==1.5.1",
+    "numpy==1.26.4",
+    "joblib==1.4.2",
+    "python-dotenv==1.0.1",
+    "psycopg2-binary==2.9.9",
+    "requests==2.32.3",
+    "greenlet>=3.0",
+]
+
+
+[tool.uv]
+package = false

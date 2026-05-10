@@ -1,6 +1,50 @@
+<!--
+SYNC IMPACT REPORT
+==================
+Version change: 1.0 → 2.0 (MAJOR)
+
+Reason for MAJOR bump:
+  - Go backend (Gin / pgx / opensearch-go) fully retired.
+  - Two services (backend + ai-service) merged into one Python `app` service.
+  - ORM strategy changed from "no ORM (raw pgx/v5)" to SQLAlchemy ORM.
+  - OpenSearch client changed from opensearch-go to opensearch-py.
+  - Language runtime for API layer changed from Go to Python.
+
+Modified principles / sections:
+  § 1 Phase scope          — Go REST API removed; "Python app service" added
+  § 3 Architecture decisions — "Single API entry point" updated (Python, not Go);
+                              "ORM: None" replaced by "SQLAlchemy 2.x";
+                              Go goroutine decision replaced by FastAPI BackgroundTasks;
+                              "ID generation in Go" updated to Python uuid4
+  § 4 Tech stack           — Go API section removed; Python app section expanded;
+                              Infrastructure table updated (one `app` row, ai-service row removed)
+  § 5 Repository layout    — backend/ + ai-service/ replaced by app/
+  § 6 Layering rule        — Go-specific diagram replaced by Python/FastAPI diagram
+  § 7 API conventions      — base URLs updated to Python service
+  § 9 Naming conventions   — Go file/type conventions removed; Python conventions kept
+  § 11 Goroutine rules     — replaced by FastAPI async/background-task rules
+  § 12 Error handling      — replaced by FastAPI/Python exception conventions
+  § 13 Glossary            — goroutine entry updated; new entries added
+
+Templates status:
+  ✅ .specify/templates/plan-template.md   — Language/Version placeholder is generic; no change needed
+  ✅ .specify/templates/spec-template.md   — Technology-agnostic; no change needed
+  ✅ .specify/templates/tasks-template.md  — Generic paths; no change needed
+
+Files requiring follow-up:
+  ⚠ docs/layering.md          — still references Go package names; update when next spec touches it
+  ⚠ docs/layering-audit.md    — Go-specific audit; mark as superseded
+  ⚠ docs/repository-layout.md — references Go repo tree; update when restructure spec runs
+  ⚠ README.md                 — "Where to change what" table references Go dirs; update with restructure spec
+  ⚠ backend/                  — existing Go code; retire folder in restructure spec
+  ⚠ ai-service/               — existing Python service; merge into app/ in restructure spec
+
+Deferred placeholders: none
+-->
+
 # speckit.constitution.md
 > **SPEC-00** · Single source of truth. All other specs in this project inherit from this document.
-> Version: 1.0 · Project: Beauty App · Phase: 1 — Backend & Infrastructure
+> Version: 2.0 · Project: Beauty App · Phase: 1 — Backend & Infrastructure
 
 ---
 
@@ -17,10 +61,9 @@
 ### Phase scope
 
 **In scope (Phase 1)**
-- Go REST API (Gin)
+- Python `app` service — FastAPI REST API + SQLAlchemy ORM + opensearch-py + AI/ML in one process
 - PostgreSQL schema & migrations
 - OpenSearch index mapping & queries
-- Python AI microservice (FastAPI)
 - Docker Compose orchestration
 - Seed data & dev scripts
 
@@ -36,18 +79,19 @@
 
 ## 3. Architecture decisions (locked)
 
-These decisions are final. Individual specs must not contradict them.
+These decisions are final. Individual specs MUST NOT contradict them.
 
 | Decision | Choice | Reason |
 |---|---|---|
-| No Kafka / Debezium | Go goroutines for async | Reduces operational complexity for academic scope |
-| Single API entry point | Go backend only | React never calls Python directly |
-| Async AI label | Goroutine after 201 response | User is not blocked waiting for ML model |
-| Vector store | OpenSearch knn_vector | Handles both fuzzy search (T1) and k-NN (T3) in one engine |
+| No Kafka / Debezium | FastAPI BackgroundTasks for async | Reduces operational complexity for academic scope |
+| Single API entry point | Python `app` service only | React never calls any other service directly |
+| Async AI label | FastAPI BackgroundTask after 201 response | User is not blocked waiting for ML model |
+| Vector store | OpenSearch knn_vector via opensearch-py | Handles both fuzzy search and k-NN in one engine |
 | Auth strategy | JWT stateless | No session store needed |
-| ID generation | UUID v4 in Go before insert | Predictable, no DB round-trip for ID |
-| Migration tool | golang-migrate (SQL files) | Version-controlled schema, simple rollback |
-| ORM | None — raw pgx/v5 | Full SQL control, no magic |
+| ID generation | `uuid.uuid4()` in Python before insert | Predictable, no DB round-trip for ID |
+| Migration tool | golang-migrate (SQL files) | Existing versioned SQL files; simple rollback |
+| ORM | SQLAlchemy 2.x (async) | Type-safe models, async session support, Pythonic DX |
+| AI + API co-location | Single `app` process | Eliminates inter-service HTTP overhead; simplifies Compose |
 
 ---
 
@@ -55,39 +99,31 @@ These decisions are final. Individual specs must not contradict them.
 
 All version pins are minimums. Patch upgrades are allowed; minor/major require a constitution update.
 
-### Go API
-
-| Package | Min version | Purpose |
-|---|---|---|
-| `go` | 1.22 | Language runtime |
-| `github.com/gin-gonic/gin` | v1.10 | HTTP router & middleware |
-| `github.com/jackc/pgx/v5` | v5.5 | PostgreSQL driver + connection pool |
-| `github.com/golang-migrate/migrate/v4` | v4.17 | SQL migration runner |
-| `github.com/golang-jwt/jwt/v5` | v5.2 | JWT creation & validation |
-| `golang.org/x/crypto` | latest | bcrypt password hashing |
-| `github.com/opensearch-project/opensearch-go/v4` | v4.0 | OpenSearch client |
-| `github.com/google/uuid` | v1.6 | UUID v4 generation |
-| `github.com/joho/godotenv` | v1.5 | Load `.env` in development |
-
-### Python AI service
+### Python `app` service
 
 | Package | Min version | Purpose |
 |---|---|---|
 | `python` | 3.11 | Language runtime |
-| `fastapi` | 0.111 | API framework |
+| `fastapi` | 0.111 | HTTP router & dependency injection |
 | `uvicorn` | 0.30 | ASGI server |
+| `sqlalchemy` | 2.0 | ORM + async session management |
+| `asyncpg` | 0.29 | Async PostgreSQL driver (used by SQLAlchemy) |
+| `alembic` | 1.13 | Schema migration runner (generates from SQLAlchemy models) |
+| `pydantic` | v2.7 | Request/response schema validation |
+| `python-jose` | 3.3 | JWT creation & validation |
+| `passlib[bcrypt]` | 1.7 | bcrypt password hashing |
+| `opensearch-py` | 2.6 | OpenSearch client (keyword + knn_vector queries) |
 | `sentence-transformers` | 3.0 | all-MiniLM-L6-v2 embeddings (384-dim) |
 | `scikit-learn` | 1.5 | Load Milestone 1 classifier |
-| `pydantic` | v2.7 | Request/response schema validation |
 | `numpy` | 1.26 | Vector math for blending |
 | `joblib` | 1.4 | Deserialise `.pkl` model artifacts |
+| `python-dotenv` | 1.0 | Load `.env` in development |
 
 ### Infrastructure
 
 | Service | Image | Port | Role |
 |---|---|---|---|
-| Go API | `golang:1.22-alpine` | 8080 | Primary REST backend |
-| Python AI | `python:3.11-slim` | 8000 | Internal AI service |
+| Python app | `python:3.11-slim` | 8080 | Primary REST API + AI/ML |
 | PostgreSQL | `postgres:16-alpine` | 5432 | Relational data store |
 | OpenSearch | `opensearchproject/opensearch:2.13.0` | 9200 | Search + vector index |
 
@@ -97,64 +133,85 @@ All version pins are minimums. Patch upgrades are allowed; minor/major require a
 
 ```
 beauty-app/
-├── backend/                  # Go API
-│   ├── main.go
-│   ├── go.mod / go.sum
-│   ├── config/
-│   ├── db/
-│   ├── middleware/
-│   ├── domain/               # pure structs, no deps
-│   ├── repository/           # all SQL lives here
-│   ├── service/              # business logic
-│   ├── handler/              # HTTP handlers (thin)
-│   ├── router/
-│   ├── aiclient/             # HTTP client → Python
-│   └── opensearch/           # OS query helpers
-├── ai-service/               # Python FastAPI
-│   ├── main.py
-│   ├── routers/
-│   ├── models/
-│   ├── schemas/
-│   ├── artifacts/            # .pkl files from Milestone 1
+├── app/                          # Unified Python service (FastAPI + AI/ML)
+│   ├── main.py                   # FastAPI app factory, lifespan hooks
+│   ├── config.py                 # Settings (pydantic-settings / dotenv)
+│   ├── database.py               # SQLAlchemy async engine + session factory
+│   ├── models/                   # SQLAlchemy ORM model classes
+│   │   ├── user.py
+│   │   ├── product.py
+│   │   ├── review.py
+│   │   ├── order.py
+│   │   └── order_item.py
+│   ├── schemas/                  # Pydantic request/response schemas
+│   │   ├── user.py
+│   │   ├── product.py
+│   │   ├── review.py
+│   │   └── order.py
+│   ├── repositories/             # All DB queries via SQLAlchemy (no raw SQL in services)
+│   │   ├── user_repo.py
+│   │   ├── product_repo.py
+│   │   ├── review_repo.py
+│   │   └── order_repo.py
+│   ├── services/                 # Business logic; calls repositories + opensearch + ai
+│   │   ├── auth_service.py
+│   │   ├── product_service.py
+│   │   ├── review_service.py
+│   │   ├── order_service.py
+│   │   └── recommendation_service.py
+│   ├── routers/                  # FastAPI APIRouter definitions (thin — call service only)
+│   │   ├── auth.py
+│   │   ├── products.py
+│   │   ├── reviews.py
+│   │   └── orders.py
+│   ├── middleware/               # Auth, CORS, logging middleware
+│   │   └── auth.py
+│   ├── opensearch/               # opensearch-py query builders + index helpers
+│   │   ├── client.py
+│   │   ├── query_builder.py
+│   │   ├── keyword_search.py
+│   │   ├── semantic_search.py
+│   │   └── fallback_logic.py
+│   ├── ai/                       # ML model loading + inference helpers
+│   │   ├── embedder.py           # sentence-transformers wrapper
+│   │   └── classifier.py        # scikit-learn .pkl loader
+│   ├── artifacts/                # .pkl files from Milestone 1
 │   ├── requirements.txt
 │   └── Dockerfile
-├── migrations/               # golang-migrate SQL files
-│   ├── 000001_create_users.up.sql
-│   ├── 000001_create_users.down.sql
-│   ├── 000002_create_products.up.sql
-│   ├── 000002_create_products.down.sql
-│   ├── 000003_create_reviews.up.sql
-│   ├── 000003_create_reviews.down.sql
-│   ├── 000004_create_orders.up.sql
-│   └── 000004_create_orders.down.sql
+├── migrations/                   # golang-migrate SQL files (existing, keep as-is)
+│   ├── 000001_create_extensions.up.sql
+│   ├── 000001_create_extensions.down.sql
+│   └── ...
 ├── opensearch/
-│   ├── products_mapping.json # index mapping (fuzzy + knn_vector)
-│   └── init.sh               # apply mapping on first boot
+│   ├── products_mapping.json     # index mapping (fuzzy + knn_vector)
+│   ├── products_mapping.v1.json  # versioned mapping artifact
+│   └── init.sh                   # idempotent index bootstrap
 ├── scripts/
-│   ├── seed_products.go
-│   ├── seed_users.go
-│   └── reindex_products.go   # bulk embed + push to OpenSearch
+│   ├── reindex_products.go       # bulk embed + push to OpenSearch (keep until app reindex route exists)
+│   ├── search_relevance_check.sh
+│   └── snapshot_seed.sql
 ├── docker-compose.yml
 ├── .env.example
+├── Makefile
 └── README.md
 ```
 
 ---
 
-## 6. Layering rule (Go API)
+## 6. Layering rule (Python `app`)
 
 ```
-handler → service → repository → domain
-                 ↘ aiclient
-                 ↘ opensearch
+router → service → repository → models (SQLAlchemy)
+               ↘ opensearch/
+               ↘ ai/
 ```
 
-- **handler** — parse HTTP request, call service, write HTTP response. No SQL. No business logic.
-- **service** — orchestrate business logic. Call repository, aiclient, opensearch. Spawn goroutines.
-- **repository** — all SQL queries. No HTTP. No business logic.
-- **domain** — plain Go structs and enums. Zero external dependencies.
-- **aiclient** — HTTP client that calls the Python AI service. Called from service layer only.
-- **opensearch** — query builders and index helpers. Called from service layer only.
+- **router** — parse HTTP request via Pydantic schema, call service, return response schema. No DB. No business logic.
+- **service** — orchestrate business logic. Call repositories, opensearch helpers, AI helpers. Schedule BackgroundTasks.
+- **repository** — all DB access via SQLAlchemy async sessions. No HTTP. No business logic.
+- **models** — SQLAlchemy ORM classes. Zero business logic. No circular imports.
+- **opensearch/** — opensearch-py query builders and index helpers. Called from service layer only.
+- **ai/** — embedding + inference helpers. Called from service layer only.
 
 **Rule:** No layer may import a layer above it. No circular imports.
 
@@ -166,12 +223,11 @@ handler → service → repository → domain
 
 | Service | Base URL (local) |
 |---|---|
-| Go API (public) | `http://localhost:8080/api/v1` |
-| Python AI (internal) | `http://ai-service:8000` |
+| Python app (public) | `http://localhost:8080/api/v1` |
 
 ### Request / response envelope
 
-All Go API responses use this envelope:
+All API responses use this envelope:
 
 ```json
 // success
@@ -183,8 +239,6 @@ All Go API responses use this envelope:
 // error
 { "error": "human-readable message" }
 ```
-
-Python AI responses are bare JSON (no envelope) — consumed internally by Go only.
 
 ### HTTP status codes
 
@@ -204,7 +258,7 @@ Python AI responses are bare JSON (no envelope) — consumed internally by Go on
 Authorization: Bearer <JWT_TOKEN>
 ```
 
-Protected routes must declare `middleware.Auth()` in the router. Public routes (search, product list, product detail) do not.
+Protected routes MUST declare the `get_current_user` dependency. Public routes (search, product list, product detail) do not.
 
 ### Pagination query params
 
@@ -219,8 +273,8 @@ Protected routes must declare `middleware.Auth()` in the router. Public routes (
 
 ### PostgreSQL
 
-- All primary keys: `UUID` generated in Go, not in the database.
-- All timestamps: `TIMESTAMPTZ` with `DEFAULT NOW()`.
+- All primary keys: `UUID` generated in Python (`uuid.uuid4()`), not in the database.
+- All timestamps: `TIMESTAMPTZ` with `DEFAULT NOW()` in SQL; `DateTime(timezone=True)` in SQLAlchemy.
 - All table names: `snake_case` plural (e.g. `order_items`).
 - All column names: `snake_case`.
 - Foreign keys: always named `<table_singular>_id` (e.g. `user_id`, `product_id`).
@@ -233,9 +287,11 @@ Protected routes must declare `middleware.Auth()` in the router. Public routes (
 000001_create_<table>.down.sql
 ```
 
-Run command:
+Run commands:
 ```bash
-migrate -path ./migrations -database $DATABASE_URL up
+make migratedb          # apply all
+make migratedbreapply   # drop all and reapply
+make migratedbdown1     # roll back one step
 ```
 
 ### OpenSearch
@@ -244,6 +300,7 @@ migrate -path ./migrations -database $DATABASE_URL up
 - Vector field: `item_vector`, dimension 384, space `cosinesimil`, engine `nmslib`, method `hnsw`
 - Analyser: `beauty_analyzer` with synonym filter for brand name variants
 - All index mapping changes require a versioned JSON file in `opensearch/`
+- Python client: `opensearch-py` (`OpenSearch` class)
 
 ---
 
@@ -251,17 +308,17 @@ migrate -path ./migrations -database $DATABASE_URL up
 
 | Context | Convention | Example |
 |---|---|---|
-| Go files | `snake_case.go` | `review_service.go` |
-| Go exported types | `PascalCase` | `ReviewService` |
-| Go unexported | `camelCase` | `parseLabel` |
-| Go interfaces | `PascalCase` + suffix `-er` or `-Repository` | `ReviewRepository` |
+| Python files | `snake_case.py` | `review_service.py` |
+| Python classes | `PascalCase` | `ReviewService` |
+| Python functions/vars | `snake_case` | `parse_label` |
+| SQLAlchemy models | `PascalCase` (singular) | `Product`, `OrderItem` |
+| Pydantic schemas | `PascalCase` + suffix `Create`/`Response`/`Update` | `ProductResponse` |
+| FastAPI routers | `snake_case` module, `APIRouter` instance | `router = APIRouter()` |
 | SQL tables | `snake_case` plural | `order_items` |
 | SQL columns | `snake_case` | `final_label` |
 | JSON fields (API) | `snake_case` | `product_id` |
 | ENV vars | `SCREAMING_SNAKE_CASE` | `JWT_SECRET` |
-| Python files | `snake_case.py` | `sentiment_model.py` |
-| Python classes | `PascalCase` | `SentimentModel` |
-| Docker services | `kebab-case` | `ai-service` |
+| Docker services | `kebab-case` | `app`, `opensearch` |
 
 ---
 
@@ -271,19 +328,15 @@ All secrets and config are in `.env`. Never hardcoded. `.env` is in `.gitignore`
 
 ```bash
 # PostgreSQL
-DATABASE_URL=postgres://user:pass@localhost:5432/beautyapp
+DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/rmit
 
-# Go API
+# Python app
 PORT=8080
 JWT_SECRET=change-me-in-production
 JWT_EXPIRY_HOURS=72
 
-# Python AI service
-AI_SERVICE_URL=http://ai-service:8000
-AI_SERVICE_TIMEOUT_SEC=30
-
 # OpenSearch
-OPENSEARCH_URL=http://opensearch:9200
+OPENSEARCH_URL=http://localhost:9200
 OPENSEARCH_INDEX_PRODUCTS=products
 
 # App
@@ -292,47 +345,55 @@ ENV=development
 
 ---
 
-## 11. Goroutine rules
+## 11. Async / background task rules
 
-These rules apply to every goroutine spawned in the project.
+These rules apply to every background task in the project.
 
-1. Goroutines are only spawned in the **service layer**. Never in handlers.
-2. Every goroutine must `recover()` from panics and log the error.
-3. Goroutines always receive a `context.Background()` — never the request context (which gets cancelled when the HTTP response is sent).
-4. Goroutines must never write to the HTTP response after it has been sent.
-5. Goroutine errors are logged — never silently swallowed.
+1. Background tasks are only scheduled in the **service layer** via FastAPI `BackgroundTasks`. Never in routers.
+2. Every background task function MUST handle its own exceptions and log them — never silently swallow errors.
+3. Background tasks MUST NOT depend on the request lifecycle (e.g., no dependency injection from the request).
+4. Background tasks MUST NOT write to the HTTP response.
+5. Long-running background tasks SHOULD use a dedicated async session, not the request session.
 
-```go
-// canonical goroutine pattern in service layer
-go func(reviewID string, content string) {
-    defer func() {
-        if r := recover(); r != nil {
-            log.Printf("goroutine panic: %v", r)
-        }
-    }()
-    // ... AI call and DB update
-}(review.ID, review.Content)
+```python
+# canonical background task pattern in service layer
+def run_ai_label(review_id: str, content: str) -> None:
+    try:
+        # ... call AI helper and update DB
+        pass
+    except Exception as exc:
+        logger.error("background ai label failed: %s", exc)
+
+# in service method:
+background_tasks.add_task(run_ai_label, review.id, review.content)
 ```
 
 ---
 
 ## 12. Error handling conventions
 
-```go
-// wrap errors with context at every layer boundary
-return fmt.Errorf("review_service.CreateReview: %w", err)
+```python
+# raise domain exceptions from repository / service
+from app.exceptions import NotFoundError, ConflictError, UnauthorisedError
 
-// handler converts to HTTP response
-if errors.Is(err, domain.ErrNotFound) {
-    c.JSON(404, gin.H{"error": "resource not found"})
-    return
-}
+# raise in repository
+if not result:
+    raise NotFoundError(f"product {product_id} not found")
+
+# catch in router and map to HTTP response
+@router.get("/{product_id}")
+async def get_product(product_id: str, service: ProductService = Depends()):
+    try:
+        return {"data": await service.get(product_id)}
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 ```
 
-Sentinel errors live in `domain/errors.go`:
-- `domain.ErrNotFound`
-- `domain.ErrUnauthorised`
-- `domain.ErrConflict`
+Sentinel exceptions live in `app/exceptions.py`:
+- `NotFoundError`
+- `UnauthorisedError`
+- `ConflictError`
+- `ValidationError` (maps to 400)
 
 ---
 
@@ -342,7 +403,7 @@ Sentinel errors live in `domain/errors.go`:
 |---|---|
 | **constitution** | This file (SPEC-00). The root source of truth for all project specs. |
 | **spec** | A numbered speckit document describing one area of implementation. |
-| **goroutine** | A Go lightweight thread used for async AI label generation after review submission. |
+| **background task** | A FastAPI `BackgroundTask` used for async AI label generation after review submission. |
 | **pending label** | The state of a review immediately after POST — AI processing not yet complete. |
 | **final label** | The label stored on a review after AI prediction, optionally overridden by the user. |
 | **item_vector** | 384-dimensional float array produced by sentence-transformers for a product description. |
@@ -350,7 +411,8 @@ Sentinel errors live in `domain/errors.go`:
 | **cold start** | Recommendation state when a user has no order history — falls back to content-only similarity. |
 | **beauty_analyzer** | Custom OpenSearch analyser with synonym filter for brand name normalisation. |
 | **T1 / T2 / T3** | Shorthand for Task 1 (search), Task 2 (review + label), Task 3 (recommendations). |
-| **Phase 1** | Backend & infrastructure milestone — Go, PostgreSQL, OpenSearch, Python AI. |
+| **Phase 1** | Backend & infrastructure milestone — Python app, PostgreSQL, OpenSearch. |
 | **Phase 2** | Frontend milestone — React + TypeScript (deferred). |
-| **M1 artifacts** | Trained ML model files (.pkl) from Milestone 1 used by the Python AI service. |
-| **re-rank** | In-memory scoring step in Go after k-NN retrieval: `score = 0.6 × item_sim + 0.4 × user_pref`. |
+| **M1 artifacts** | Trained ML model files (.pkl) from Milestone 1 used by the `app` AI layer. |
+| **re-rank** | In-memory scoring step in Python after k-NN retrieval: `score = 0.6 × item_sim + 0.4 × user_pref`. |
+| **app** | The unified Python service (FastAPI + SQLAlchemy + opensearch-py + AI/ML). |

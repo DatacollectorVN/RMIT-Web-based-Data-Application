@@ -1,49 +1,52 @@
 # Beauty App — RMIT Web-based Data Application
 
-Phase 1 monorepo for backend and infrastructure. This repository implements the structure defined by SPEC-01 and inherits all locked technical decisions from SPEC-00.
+Phase 1 monorepo. This repository implements a unified Python `app` service (FastAPI + SQLAlchemy + opensearch-py) as defined by SPEC-04, inheriting all technical decisions from SPEC-00 (constitution v2.0).
 
 ## Specifications
 
 - Constitution (SPEC-00): `.specify/memory/constitution.md`
-- Current feature folder: `specs/20260507-122044-code-structure-organization/`
-- Implementation tasks: `specs/20260507-122044-code-structure-organization/tasks.md`
+- Latest feature: `specs/20260510-145455-python-app-consolidation/`
 
 ## Repository layout
 
-See `docs/repository-layout.md` for the full tree and stability notes. Key roots:
-
-- `backend/`: public Go API (single public entry point)
-- `ai-service/`: internal Python AI HTTP service
-- `migrations/`: SQL schema evolution files
-- `opensearch/`: index mapping and bootstrap script
-- `scripts/`: data seed and maintenance scripts
+| Directory | Purpose |
+| --- | --- |
+| `app/` | Unified Python service — FastAPI REST API + SQLAlchemy ORM + opensearch-py + AI/ML |
+| `app/migrations/` | SQL schema evolution files (applied by `app/scripts/migrate.py`) |
+| `app/scripts/` | Operational scripts: `migrate.py`, `snapshotdb.py`, `reindex_products.py`, `search_relevance_check.py` |
+| `opensearch/` | Index mapping JSON and idempotent `init.sh` |
+| `scripts/` | Legacy Go scripts (deprecated — see `app/scripts/` for Python equivalents) |
 
 ## Where to change what
 
 | Change type | Primary location |
 | --- | --- |
-| New HTTP behavior | `backend/handler/`, `backend/router/`, `backend/service/` |
-| Business orchestration | `backend/service/` |
-| SQL queries and persistence | `backend/repository/` |
-| Shared domain types/errors | `backend/domain/` |
-| Internal AI integration calls | `backend/aiclient/` |
-| OpenSearch query/mapping behavior | `backend/opensearch/`, `opensearch/` |
-| Database schema changes | `migrations/` |
+| New HTTP endpoint | `app/routers/`, `app/services/` |
+| Business orchestration | `app/services/` |
+| DB queries and persistence | `app/repositories/` |
+| Shared domain types/errors | `app/exceptions.py` |
+| OpenSearch query/mapping behaviour | `app/opensearch/`, `opensearch/` |
+| AI / ML inference | `app/ai/` |
+| Database schema changes | `app/migrations/` |
 | Local environment and service topology | `docker-compose.yml`, `.env.example` |
-
-## Layering and review
-
-- Layering rules and allowed dependency directions: `docs/layering.md`
-- Current audit record: `docs/layering-audit.md`
 
 ## Local development
 
-1. Copy env template: `cp .env.example .env`
-2. Start stack: `docker compose up -d`
-3. Optional mapping bootstrap: `./opensearch/init.sh`
-4. Detailed step-by-step guide: `specs/20260507-122044-code-structure-organization/quickstart.md`
+```bash
+cp .env.example .env          # edit credentials
+docker compose up -d          # starts app, postgres, opensearch
+make migratedb                # apply schema migrations
+make snapshotdb               # load sample data
+make opensearchinit           # create products index
+make reindexproducts          # upload products to OpenSearch
+curl http://localhost:8080/api/v1/health   # → {"data":{"status":"ok"}}
+```
+
+Full step-by-step: `specs/20260510-145455-python-app-consolidation/quickstart.md`
 
 ## Notes
 
-- The constitution uses `beauty-app/` as the logical root name; this clone root is `RMIT-Web-based-Data-Application`.
-- Frontend structure is intentionally deferred to Phase 2.
+- No Go toolchain required — all runtime code and scripts are Python 3.11.
+- No `golang-migrate` or `psql` binary required — migrations and seeding use `app/scripts/migrate.py` and `app/scripts/snapshotdb.py`.
+- Frontend (React + TypeScript) is deferred to Phase 2.
+- The `backend/` directory is retained for reference but is no longer built or deployed.
