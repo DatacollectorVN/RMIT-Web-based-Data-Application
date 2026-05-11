@@ -45,3 +45,8 @@ ai-service/.venv/
 dist/
 build/
 *.egg-info/
+
+# Product photo uploads (keep tree + docs in git)
+data/product-photos/**
+!data/product-photos/.gitkeep
+!data/product-photos/README.md

@@ -12,6 +12,7 @@ dependencies = [
     "pydantic==2.7.4",
     "pydantic-settings==2.3.4",
     "passlib[bcrypt]==1.7.4",
+    "torch",
     "sentence-transformers==3.0.1",
     "scikit-learn==1.5.1",
     "numpy==1.26.4",
@@ -25,3 +26,15 @@ dependencies = [
 
 [tool.uv]
 package = false
+
+# Force CPU-only PyTorch so the Docker image does not pull NVIDIA/CUDA packages.
+# sentence-transformers only needs CPU inference for text embeddings.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu" }]
+torchvision = [{ index = "pytorch-cpu" }]
+torchaudio = [{ index = "pytorch-cpu" }]

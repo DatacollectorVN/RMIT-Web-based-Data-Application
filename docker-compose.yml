@@ -58,6 +58,11 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-rmit}:${POSTGRES_PASSWORD:-rmit}@postgres:5432/${POSTGRES_DB:-rmit}
       OPENSEARCH_URL: http://opensearch:9200
       OPENSEARCH_INDEX_PRODUCTS: ${OPENSEARCH_INDEX_PRODUCTS:-products}
+      # Writable storage for product images; same path as PRODUCT_PHOTOS_DIR in .env.example
+      PRODUCT_PHOTOS_DIR: /var/lib/beauty-app/product-photos
+    volumes:
+      # Bind mount: persists on the EC2 host under ./data/product-photos; share with API only.
+      - ./data/product-photos:/var/lib/beauty-app/product-photos
     ports:
       - "8080:8080"
     healthcheck:
@@ -65,6 +70,17 @@ services:
       interval: 10s
       timeout: 5s
       retries: 6
+
+  ui:
+    image: nginx:alpine
+    container_name: rmit-ui
+    volumes:
+      - ./ui:/usr/share/nginx/html:ro
+      - ./ui/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - app
 
 volumes:
   postgres-data:

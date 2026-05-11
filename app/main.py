@@ -2,12 +2,18 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from opensearchpy import OpenSearch
 from sqlalchemy import text
 
-from config import OPENSEARCH_URL
+from config import OPENSEARCH_URL, PRODUCT_PHOTOS_DIR
 from database import engine
 from routers.health import router as health_router
+from routers.orders import router as orders_router
+from routers.products import router as products_router
+from routers.reviews import router as reviews_router
+from routers.users import router as users_router
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +49,25 @@ def create_app() -> FastAPI:
         version="1.0.0",
         lifespan=lifespan,
     )
+
+    # Allow all origins in Phase 1 (public API, no JWT).
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
     application.include_router(health_router, prefix="/api/v1")
+    application.include_router(users_router, prefix="/api/v1")
+    application.include_router(products_router, prefix="/api/v1")
+    application.include_router(reviews_router, prefix="/api/v1")
+    application.include_router(orders_router, prefix="/api/v1")
+
+    # Ensure upload directory exists and serve it at /media
+    PRODUCT_PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
+    application.mount("/media", StaticFiles(directory=str(PRODUCT_PHOTOS_DIR)), name="media")
+
     return application
 
 

@@ -32,8 +32,23 @@ MIGRATIONS_DIR = Path(__file__).parent.parent / "migrations"
 CREATE_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS schema_migrations (
     version     BIGINT      PRIMARY KEY,
+    dirty       BOOLEAN     NOT NULL DEFAULT FALSE,
     applied_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+"""
+
+# Ensures the `dirty` column has a DEFAULT even on tables created by golang-migrate
+# (which adds `dirty BOOLEAN NOT NULL` with no default, causing INSERT failures).
+_PATCH_DIRTY_DEFAULT_SQL = """
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'schema_migrations' AND column_name = 'dirty'
+    ) THEN
+        ALTER TABLE schema_migrations ALTER COLUMN dirty SET DEFAULT FALSE;
+    END IF;
+END $$;
 """
 
 
@@ -58,6 +73,7 @@ def _connect() -> psycopg2.extensions.connection:
 
 def _ensure_migrations_table(cur) -> None:
     cur.execute(CREATE_TABLE_SQL)
+    cur.execute(_PATCH_DIRTY_DEFAULT_SQL)
 
 
 def _all_versions() -> list[tuple[int, str]]:
@@ -67,7 +83,7 @@ def _all_versions() -> list[tuple[int, str]]:
     for f in MIGRATIONS_DIR.iterdir():
         m = pattern.match(f.name)
         if m:
-            versions.append((int(m.group(1)), m.stem.removesuffix(".up")))
+            versions.append((int(m.group(1)), m.group(2)))
     return sorted(versions, key=lambda x: x[0])
 
 
@@ -127,23 +143,12 @@ def cmd_down(conn, steps: int) -> None:
 
 
 def cmd_reapply(conn) -> None:
-    print("migrate: dropping all applied migrations ...")
+    print("migrate: dropping public schema and recreating ...")
     with conn:
         with conn.cursor() as cur:
-            _ensure_migrations_table(cur)
-            applied = sorted(_applied_versions(cur), reverse=True)
-            all_v = {v: stem for v, stem in _all_versions()}
-
-            for version in applied:
-                stem = all_v.get(version, str(version))
-                path = MIGRATIONS_DIR / f"{version:06d}_{stem}.down.sql"
-                print(f"  rolling back {path.name} ...", end=" ", flush=True)
-                _run_file(cur, path)
-                cur.execute("DELETE FROM schema_migrations WHERE version = %s", (version,))
-                print("OK")
-
+            cur.execute("DROP SCHEMA public CASCADE")
+            cur.execute("CREATE SCHEMA public")
     print("migrate: re-applying all migrations ...")
-    conn.reset()
     cmd_up(conn)
 
 
