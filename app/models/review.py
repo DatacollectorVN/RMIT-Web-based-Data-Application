@@ -1,7 +1,4 @@
-import uuid
-
-from sqlalchemy import Boolean, ForeignKey, SmallInteger, String, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import BigInteger, Boolean, ForeignKey, Identity, SmallInteger, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 from sqlalchemy.types import DateTime
@@ -12,9 +9,9 @@ from database import Base
 class Review(Base):
     __tablename__ = "reviews"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    product_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("products.id", ondelete="CASCADE"), nullable=False)
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=False), primary_key=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    product_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("products.id", ondelete="CASCADE"), nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     rating: Mapped[int] = mapped_column(SmallInteger, nullable=False)
