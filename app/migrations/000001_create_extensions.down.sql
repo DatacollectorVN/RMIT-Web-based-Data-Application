@@ -1,2 +1,2 @@
-DROP EXTENSION IF EXISTS "uuid-ossp";
-
+-- noop (see 000001 up)
+SELECT 1;

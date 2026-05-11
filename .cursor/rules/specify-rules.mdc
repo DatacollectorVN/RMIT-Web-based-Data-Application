@@ -6,44 +6,47 @@ alwaysApply: true
 
 # RMIT-Web-based-Data-Application Development Guidelines
 
-Auto-generated from all feature plans. Last updated: 2026-05-10 (constitution v2.0)
+Auto-generated from SPEC-00. Last updated: 2026-05-11 (constitution v2.1)
 
 ## Active Technologies
-- Python 3.11 + FastAPI 0.111, uvicorn 0.30, SQLAlchemy 2.0 (async), asyncpg 0.29, opensearch-py 2.6, pydantic v2.7, python-jose 3.3, passlib[bcrypt] 1.7, sentence-transformers 3.0, scikit-learn 1.5, numpy 1.26, joblib 1.4, python-dotenv 1.0, uv (installer) (20260510-145455-python-app-consolidation)
-- PostgreSQL 16 (via SQLAlchemy async), OpenSearch 2.13 (via opensearch-py) (20260510-145455-python-app-consolidation)
 
-**Primary stack (SPEC-00 v2.0 — Go retired, unified Python `app` service)**
+- Python 3.11 + FastAPI 0.111, uvicorn 0.30, SQLAlchemy 2.0 (async), asyncpg 0.29, opensearch-py 2.6, pydantic v2.7, passlib[bcrypt] 1.7, sentence-transformers 3.0, scikit-learn 1.5, numpy 1.26, joblib 1.4, python-dotenv 1.0, uv (package manager)
+- PostgreSQL 16 — **BIGINT identity** primary keys; OpenSearch 2.13 — `product_id` mapped as **long**
+- Phase 1 API: **no JWT** required; `python-jose` not in dependencies
+
+**Primary stack (SPEC-00 v2.1 — unified Python `app` service)**
 
 - Python 3.11 · FastAPI 0.111 · uvicorn 0.30 · pydantic v2.7
-- SQLAlchemy 2.0 (async ORM) · asyncpg 0.29 (PostgreSQL async driver)
-- opensearch-py 2.6 (OpenSearch client — replaces opensearch-go)
+- SQLAlchemy 2.0 (async ORM) · asyncpg 0.29
+- opensearch-py 2.6 · psycopg2-binary (scripts)
 - sentence-transformers 3.0 · scikit-learn 1.5 · numpy 1.26 · joblib 1.4
-- python-jose 3.3 (JWT) · passlib[bcrypt] 1.7
-- golang-migrate v4 (SQL migration runner — kept for existing migration files)
+- passlib[bcrypt] 1.7
+- Migrations: `app/scripts/migrate.py` + SQL in `app/migrations/`
 - PostgreSQL 16 · OpenSearch 2.13
 
 ## Project Structure
 
 ```text
-app/          ← unified Python service (FastAPI + SQLAlchemy + opensearch-py + AI/ML)
-migrations/   ← golang-migrate SQL files (existing, keep as-is)
-opensearch/   ← index mapping JSON + init.sh
-scripts/      ← reindex_products.go, snapshot_seed.sql, search_relevance_check.sh
+app/              ← unified Python service (FastAPI + SQLAlchemy + opensearch-py + AI/ML)
+app/migrations/   ← SQL applied by app/scripts/migrate.py
+app/scripts/      ← migrate.py, snapshotdb.py, reindex_products.py, search_relevance_check.py
+opensearch/       ← index mapping JSON + init.sh
 ```
 
 ## Commands
 
 ```bash
+# Install deps (uv)
+make install
+
 # Run app locally
-cd app && uv pip install -r requirements.txt
-uvicorn main:app --host 0.0.0.0 --port 8080 --reload
+make dev
 
-# Lint / format
-ruff check app/
-ruff format app/
-
-# Tests
-pytest app/tests/
+# DB / search
+make migratedb
+make snapshotdb
+make opensearchinit
+make reindexproducts
 ```
 
 ## Code Style
@@ -51,8 +54,9 @@ pytest app/tests/
 Python 3.11: follow PEP 8, use `ruff` for lint/format, `snake_case` for files and functions, `PascalCase` for classes and SQLAlchemy models, `PascalCase` + suffix for Pydantic schemas (e.g. `ProductResponse`).
 
 ## Recent Changes
-- 20260510-145455-python-app-consolidation: Added Python 3.11 + FastAPI 0.111, uvicorn 0.30, SQLAlchemy 2.0 (async), asyncpg 0.29, opensearch-py 2.6, pydantic v2.7, python-jose 3.3, passlib[bcrypt] 1.7, sentence-transformers 3.0, scikit-learn 1.5, numpy 1.26, joblib 1.4, python-dotenv 1.0, uv (installer)
-- 20260510-constitution-v2: Retired Go backend; merged backend + ai-service into unified Python `app`; adopted SQLAlchemy ORM + opensearch-py
+
+- 20260511-092104-int-ids-remove-jwt: BIGINT identity PKs, OpenSearch `product_id` as long, JWT removed from Phase 1, constitution v2.1
+- 20260510-145455-python-app-consolidation: Unified Python `app`; uv; Makefile delegates to `app/`
 
 <!-- MANUAL ADDITIONS START -->
 <!-- MANUAL ADDITIONS END -->

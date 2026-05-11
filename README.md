@@ -1,11 +1,11 @@
 # Beauty App — RMIT Web-based Data Application
 
-Phase 1 monorepo. This repository implements a unified Python `app` service (FastAPI + SQLAlchemy + opensearch-py) as defined by SPEC-04, inheriting all technical decisions from SPEC-00 (constitution v2.0).
+Phase 1 monorepo. This repository implements a unified Python `app` service (FastAPI + SQLAlchemy + opensearch-py). Entity IDs are **integers** (BIGINT) in PostgreSQL and in API JSON. Phase 1 does **not** require JWT or bearer tokens. See SPEC-00 (constitution v2.1).
 
 ## Specifications
 
 - Constitution (SPEC-00): `.specify/memory/constitution.md`
-- Latest feature: `specs/20260510-145455-python-app-consolidation/`
+- Integer IDs + public API: `specs/20260511-092104-int-ids-remove-jwt/`
 
 ## Repository layout
 

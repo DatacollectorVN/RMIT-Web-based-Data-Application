@@ -114,9 +114,10 @@ def main() -> None:
         else:
             updated_at_str = str(updated_at)
 
-        seed = f"{row['brand']} {row['name']} {row['description']} {row['category']}"
+        pid = int(row["id"])
+        seed = f"{pid} {row['brand']} {row['name']} {row['description']} {row['category']}"
         doc = {
-            "product_id": str(row["id"]),
+            "product_id": pid,
             "brand": row["brand"],
             "name": row["name"],
             "description": row["description"],
@@ -126,7 +127,7 @@ def main() -> None:
             "updated_at": updated_at_str,
         }
 
-        meta = {"index": {"_index": INDEX, "_id": str(row["id"])}}
+        meta = {"index": {"_index": INDEX, "_id": str(pid)}}
         ndjson_lines.append(json.dumps(meta))
         ndjson_lines.append(json.dumps(doc))
         indexed += 1
