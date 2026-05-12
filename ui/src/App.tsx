@@ -81,7 +81,7 @@ function Footer() {
           <h4 style={{ color: "#FFFFFF", fontWeight: 600, marginBottom: 12 }}>Explore</h4>
           <ul style={{ fontSize: 13, lineHeight: 1.8, listStyle: "none", padding: 0, margin: 0 }}>
             <li><a href="/buyer"                    style={footerLink}>All Products</a></li>
-            <li><a href="http://localhost:8080/docs" style={footerLink}>API Docs</a></li>
+            <li><a href={`${import.meta.env.VITE_API_HOST ?? "http://localhost:8080"}/docs`} style={footerLink}>API Docs</a></li>
           </ul>
         </div>
         <div>

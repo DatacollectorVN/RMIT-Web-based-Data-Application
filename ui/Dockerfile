@@ -1,6 +1,10 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
+# Declare build-time variable so Vite can bake it into the bundle
+ARG VITE_API_HOST
+ENV VITE_API_HOST=${VITE_API_HOST}
+
 # Install dependencies first (layer-cache friendly)
 COPY package.json ./
 RUN npm install
