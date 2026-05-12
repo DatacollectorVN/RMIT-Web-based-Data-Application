@@ -4,39 +4,16 @@ OpenSearch helpers for the `products` index.
 Called from product_service after every write (create / update / delete).
 Errors are logged but never propagated — OpenSearch sync is best-effort.
 """
-import hashlib
 import logging
-import math
 from datetime import timezone
 
 from opensearchpy import OpenSearch
 
 from config import OPENSEARCH_INDEX_PRODUCTS
 from models.product import Product
+from opensearch.embeddings import encode_product_text
 
 logger = logging.getLogger(__name__)
-
-
-def _placeholder_unit_vector_384(seed_text: str) -> list[float]:
-    """
-    Deterministic non-zero 384-dim unit vector derived from seed_text via SHA-256.
-    Identical algorithm to app/scripts/reindex_products.py.
-    """
-    dim = 384
-    vec: list[float] = []
-    counter = 0
-    while len(vec) < dim:
-        h = hashlib.sha256(f"{seed_text}|{counter}".encode()).digest()
-        counter += 1
-        for byte in h:
-            if len(vec) >= dim:
-                break
-            vec.append((byte / 255.0) * 2.0 - 1.0)
-    norm = math.sqrt(sum(v * v for v in vec))
-    if norm == 0:
-        vec[0] = 1.0
-        norm = 1.0
-    return [v / norm for v in vec]
 
 
 def upsert(client: OpenSearch, product: Product) -> None:
@@ -48,7 +25,6 @@ def upsert(client: OpenSearch, product: Product) -> None:
         else:
             updated_at_str = str(updated_at)
 
-        seed = f"{product.id} {product.brand} {product.name} {product.description} {product.category}"
         doc = {
             "product_id": int(product.id),
             "brand": product.brand,
@@ -56,7 +32,7 @@ def upsert(client: OpenSearch, product: Product) -> None:
             "description": product.description,
             "category": product.category,
             "price": float(product.price),
-            "item_vector": _placeholder_unit_vector_384(seed),
+            "item_vector": encode_product_text(product.brand, product.name, float(product.price), product.category),
             "updated_at": updated_at_str,
         }
         client.index(

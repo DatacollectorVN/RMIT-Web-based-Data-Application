@@ -61,6 +61,8 @@ class ProductResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     photos: list[PhotoResponse] = Field(default_factory=list)
+    review_count: int = 0
+    avg_rating: float | None = None
 
     model_config = {"from_attributes": True}
 
@@ -77,6 +79,7 @@ class ProductResponse(BaseModel):
 
 class ProductListResponse(BaseModel):
     total: int
+    total_pages: int
     page: int
     limit: int
     items: list[ProductSummaryResponse]

@@ -1,3 +1,4 @@
+import math
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
@@ -7,15 +8,17 @@ from database import get_db
 from opensearch.client import get_opensearch
 from schemas.photo import PhotoResponse, PhotoUpdate
 from schemas.product import ProductCreate, ProductResponse, ProductUpdate
-from services import product_service
+from repositories import product_repo
+from services import product_service, search_service
 
 router = APIRouter(prefix="/products", tags=["products"])
 
 
-def _product_detail_response(product) -> ProductResponse:
+def _product_detail_response(product, review_stats: dict | None = None) -> ProductResponse:
     """Build detail DTO: only active photos; ``photo_url`` is computed on ``ProductResponse``."""
     photos = getattr(product, "photos", None) or []
     active = [p for p in photos if p.is_active]
+    s = (review_stats or {}).get(product.id, {})
     return ProductResponse(
         id=product.id,
         brand=product.brand,
@@ -26,6 +29,8 @@ def _product_detail_response(product) -> ProductResponse:
         created_at=product.created_at,
         updated_at=product.updated_at,
         photos=[PhotoResponse.model_validate(p) for p in active],
+        review_count=s.get("review_count", 0),
+        avg_rating=s.get("avg_rating"),
     )
 
 
@@ -57,12 +62,34 @@ async def list_products(
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     products, total = await product_service.list_products(db, page, limit)
+    stats = await product_repo.get_review_stats(db, [p.id for p in products])
     return {
         "data": {
             "total": total,
+            "total_pages": math.ceil(total / limit),
             "page": page,
             "limit": limit,
-            "items": [_product_detail_response(p) for p in products],
+            "items": [_product_detail_response(p, stats) for p in products],
+        }
+    }
+
+
+@router.get("/search", summary="Search products by name (OpenSearch)")
+async def search_products(
+    request: Request,
+    q: str = Query("", description="Search text matched against product name"),
+    limit: int = Query(10, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    os_client = get_opensearch(request)
+    products, total = await search_service.search_products_by_name(os_client, db, q, size=limit)
+    stats = await product_repo.get_review_stats(db, [p.id for p in products])
+    return {
+        "data": {
+            "total": total,
+            "total_pages": math.ceil(total / limit),
+            "limit": limit,
+            "items": [_product_detail_response(p, stats) for p in products],
         }
     }
 
@@ -73,7 +100,8 @@ async def get_product(
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     product = await product_service.get_product(db, product_id)
-    return {"data": _product_detail_response(product)}
+    stats = await product_repo.get_review_stats(db, [product_id])
+    return {"data": _product_detail_response(product, stats)}
 
 
 @router.post("/", status_code=201)

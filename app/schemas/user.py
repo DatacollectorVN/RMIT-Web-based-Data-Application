@@ -8,11 +8,14 @@ class UserCreate(BaseModel):
     password: str
     full_name: str
     role: str = "buyer"
+    location: str | None = None
+    age: int | None = None
+    job: str | None = None
 
     @field_validator("role")
     @classmethod
     def validate_role(cls, v: str) -> str:
-        allowed = {"buyer", "seller", "admin"}
+        allowed = {"buyer", "admin"}
         if v not in allowed:
             raise ValueError(f"role must be one of {allowed}")
         return v
@@ -23,13 +26,16 @@ class UserUpdate(BaseModel):
     password: str | None = None
     full_name: str | None = None
     role: str | None = None
+    location: str | None = None
+    age: int | None = None
+    job: str | None = None
 
     @field_validator("role")
     @classmethod
     def validate_role(cls, v: str | None) -> str | None:
         if v is None:
             return v
-        allowed = {"buyer", "seller", "admin"}
+        allowed = {"buyer", "admin"}
         if v not in allowed:
             raise ValueError(f"role must be one of {allowed}")
         return v
@@ -40,6 +46,9 @@ class UserResponse(BaseModel):
     email: str
     full_name: str
     role: str
+    location: str | None = None
+    age: int | None = None
+    job: str | None = None
     created_at: datetime
     updated_at: datetime
 

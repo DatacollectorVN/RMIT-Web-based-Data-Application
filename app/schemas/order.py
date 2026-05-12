@@ -86,6 +86,7 @@ class OrderResponse(BaseModel):
 
 class OrderListResponse(BaseModel):
     total: int
+    total_pages: int
     page: int
     limit: int
     items: list[OrderResponse]

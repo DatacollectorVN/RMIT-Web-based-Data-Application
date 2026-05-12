@@ -37,8 +37,8 @@ function mapProduct(raw: RawProduct): Product {
     product_title: String(raw.name ?? ""),
     brand_name:    brand,
     price:         Number(raw.price ?? 0),
-    avg_rating:    null,   // enriched from reviews cache after fetch
-    review_count:  0,
+    avg_rating:    raw.avg_rating != null ? Number(raw.avg_rating) : null,
+    review_count:  Number(raw.review_count ?? 0),
     product_tags:  String(raw.category ?? ""),
     description:   raw.description != null ? String(raw.description) : null,
     image_local:   photoUrl,
@@ -60,7 +60,7 @@ function mapReview(raw: RawReview): Review {
     is_a_buyer:     raw.final_label === true ? 1 : 0,
     model_predicted: raw.ai_label === true ? 1 : raw.ai_label === false ? 0 : null,
     user_overridden: 0,
-    author:         `User #${raw.user_id ?? "anon"}`,
+    author:         raw.user_name != null ? String(raw.user_name) : `User #${raw.user_id ?? "anon"}`,
     source:         "GlowShop",
     created_at:     raw.created_at != null ? String(raw.created_at) : undefined,
   };
@@ -75,36 +75,6 @@ export function resolveImageUrl(localPath: string | null | undefined): string {
 // ----- Module-level product cache (refreshed every 60 s) -----
 let _cache: Product[] | null = null;
 let _cacheAt  = 0;
-
-// ----- Review stats cache (avg_rating / review_count per product_id) -----
-let _reviewStats: Record<string, { avg_rating: number; review_count: number }> = {};
-let _reviewStatsAt = 0;
-
-async function getReviewStats(): Promise<Record<string, { avg_rating: number; review_count: number }>> {
-  if (Object.keys(_reviewStats).length > 0 && Date.now() - _reviewStatsAt < 60_000) return _reviewStats;
-  try {
-    const res = await fetch("/api/v1/reviews/?page=1&limit=500");
-    if (!res.ok) return _reviewStats;
-    const json = await res.json() as { data: { items: RawReview[] } };
-    const items = json.data?.items ?? [];
-    const acc: Record<string, { sum: number; count: number }> = {};
-    for (const r of items) {
-      const pid = String(r.product_id);
-      if (!acc[pid]) acc[pid] = { sum: 0, count: 0 };
-      acc[pid].sum   += Number(r.rating ?? 0);
-      acc[pid].count += 1;
-    }
-    const result: Record<string, { avg_rating: number; review_count: number }> = {};
-    for (const [pid, s] of Object.entries(acc)) {
-      result[pid] = { avg_rating: s.count > 0 ? s.sum / s.count : 0, review_count: s.count };
-    }
-    _reviewStats   = result;
-    _reviewStatsAt = Date.now();
-    return _reviewStats;
-  } catch {
-    return _reviewStats;
-  }
-}
 
 // ----- User name cache (id → display name) -----
 let _userNames: Record<string, string> | null = null;
@@ -133,22 +103,27 @@ async function getAllProducts(): Promise<Product[]> {
   const json     = await res.json() as { data: { items: RawProduct[] } };
   const products = (json.data?.items ?? []).map(mapProduct);
 
-  // Enrich with review stats
-  const stats = await getReviewStats();
-  for (const p of products) {
-    const s = stats[p.product_id];
-    if (s) {
-      p.avg_rating   = s.avg_rating;
-      p.review_count = s.review_count;
-    }
-  }
-
   _cache   = products;
   _cacheAt = Date.now();
   return _cache;
 }
 
 // ----- Public API functions -----
+
+export async function fetchProductsPage(
+  page: number,
+  limit: number,
+): Promise<{ items: Product[]; total: number; total_pages: number; page: number }> {
+  const res = await fetch(`/api/v1/products/?page=${page}&limit=${limit}`);
+  if (!res.ok) throw new Error("Failed to fetch products");
+  const json = await res.json() as { data: { items: RawProduct[]; total: number; total_pages: number; page: number } };
+  return {
+    items:       (json.data?.items ?? []).map(mapProduct),
+    total:       json.data?.total ?? 0,
+    total_pages: json.data?.total_pages ?? 1,
+    page:        json.data?.page ?? page,
+  };
+}
 
 export async function fetchProducts(
   limit  = 12,
@@ -164,24 +139,30 @@ export async function fetchProductById(productId: string): Promise<Product> {
   const res = await fetch(`/api/v1/products/${encodeURIComponent(productId)}`);
   if (!res.ok) throw new Error("Failed to fetch product");
   const json = await res.json() as { data: RawProduct };
-  const p    = mapProduct(json.data);
-  // Enrich with review stats
-  const stats = await getReviewStats();
-  const s = stats[p.product_id];
-  if (s) { p.avg_rating = s.avg_rating; p.review_count = s.review_count; }
-  return p;
+  return mapProduct(json.data);
 }
 
-export async function fetchSimilarProducts(productId: string, topK = 4): Promise<Product[]> {
+export async function fetchSimilarProducts(
+  productId: string,
+  topK = 4,
+  userId?: string | null,
+): Promise<Array<Product & { similarity: number }>> {
   try {
+    const params = new URLSearchParams({ limit: String(topK) });
+    if (userId) params.set("user_id", userId);
+    const res = await fetch(`/api/v1/recommendations/similar/${encodeURIComponent(productId)}?${params}`);
+    if (!res.ok) throw new Error("recommendation api unavailable");
+    const json = await res.json() as { data: Array<{ product: RawProduct; similarity: number }> };
+    return (json.data ?? []).map(item => ({ ...mapProduct(item.product), similarity: item.similarity }));
+  } catch {
+    // fallback: same-brand filter from local cache
     const all     = await getAllProducts();
     const current = all.find(p => p.product_id === productId);
     if (!current) return [];
     return all
       .filter(p => p.product_id !== productId && p.brand_name === current.brand_name)
-      .slice(0, topK);
-  } catch {
-    return [];
+      .slice(0, topK)
+      .map(p => ({ ...p, similarity: 0 }));
   }
 }
 
@@ -190,29 +171,16 @@ export async function fetchProductReviews(productId: string, limit = 5): Promise
     `/api/v1/reviews/?product_id=${encodeURIComponent(productId)}&limit=${limit}&page=1`
   );
   if (!res.ok) return [];
-  const json    = await res.json() as { data: { items: RawReview[] } };
-  const reviews = (json.data?.items ?? []).map(mapReview);
-
-  // Resolve user names
-  const names = await getUserNames();
-  for (const r of reviews) {
-    if (r.user_id && names[r.user_id]) {
-      r.author = names[r.user_id];
-    }
-  }
-  return reviews;
+  const json = await res.json() as { data: { items: RawReview[] } };
+  return (json.data?.items ?? []).map(mapReview);
 }
 
-export async function searchProducts(q: string): Promise<Product[]> {
-  const all   = await getAllProducts();
-  const lower = q.toLowerCase();
-  return all.filter(
-    p =>
-      p.product_title.toLowerCase().includes(lower) ||
-      p.brand_name.toLowerCase().includes(lower) ||
-      (p.product_tags ?? "").toLowerCase().includes(lower) ||
-      (p.description ?? "").toLowerCase().includes(lower)
-  );
+export async function searchProducts(q: string): Promise<{ items: Product[]; total: number }> {
+  const res = await fetch(`/api/v1/products/search?q=${encodeURIComponent(q)}&limit=24`);
+  if (!res.ok) throw new Error("Search failed");
+  const json  = await res.json() as { data: { items: RawProduct[]; total: number } };
+  const items = (json.data?.items ?? []).map(mapProduct);
+  return { items, total: json.data?.total ?? items.length };
 }
 
 export async function fetchBrands(): Promise<string[]> {
@@ -222,8 +190,22 @@ export async function fetchBrands(): Promise<string[]> {
 }
 
 // ----- Auth -----
-export async function login(_username: string, _password: string, _role: UserRole): Promise<AuthUser> {
-  throw new Error("No auth endpoint — using local session");
+export async function login(email: string, password: string): Promise<AuthUser> {
+  const res = await fetch("/api/v1/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!res.ok) {
+    const json = await res.json().catch(() => ({})) as { detail?: string };
+    throw new Error(json.detail ?? "Invalid email or password");
+  }
+  const json = await res.json() as { id: number; email: string; full_name: string; role: string };
+  return {
+    id:       json.id,
+    username: json.full_name,
+    role:     json.role as UserRole,
+  };
 }
 
 // ----- Reviews -----
@@ -247,10 +229,8 @@ export async function createReview(
     const text = await res.text();
     throw new Error(text || "Failed to create review");
   }
-  // Invalidate review stats cache so counts update
-  _reviewStats   = {};
-  _reviewStatsAt = 0;
-  _cache         = null;
+  // Invalidate product cache so review counts refresh on next fetch
+  _cache = null;
   return res.json();
 }
 

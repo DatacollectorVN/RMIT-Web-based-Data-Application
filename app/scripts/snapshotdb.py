@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """
-Executes the snapshot seed SQL file against the configured PostgreSQL database.
+(Re-)generates snapshot_seed.sql from the CSV archive, then applies it to PostgreSQL.
 
-Replaces the `psql` CLI dependency.
+Steps:
+  1. Run generate_seed.py  → writes app/scripts/snapshot_seed.sql
+  2. Copy the default product photo into every product's media folder
+  3. Execute snapshot_seed.sql against the database
+  4. Reindex OpenSearch
 
 Usage:
     python app/scripts/snapshotdb.py
@@ -25,12 +29,13 @@ load_dotenv()
 
 DATABASE_URL: str = os.environ.get("DATABASE_URL", "")
 
-SEED_FILE = Path(__file__).parent / "snapshot_seed.sql"
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+SCRIPT_DIR  = Path(__file__).parent
+SEED_FILE   = SCRIPT_DIR / "snapshot_seed.sql"
+REPO_ROOT   = Path(__file__).resolve().parent.parent.parent
 DEFAULT_PRODUCT_PHOTO = REPO_ROOT / "data" / "default-photos" / "blackpink.jpg"
-PRODUCT_PHOTOS_DEST = REPO_ROOT / "data" / "product-photos" / "products"
-# Must match seeded product ids in snapshot_seed.sql (demo products; brands align with ui HomePage BRAND_ORDER).
-SEEDED_PRODUCT_IDS = range(1, 12)
+PRODUCT_PHOTOS_DEST   = REPO_ROOT / "data" / "product-photos" / "products"
+# 295 products from CSV (sorted by brand A→Z then avg_rating desc)
+SEEDED_PRODUCT_IDS = range(1, 296)
 
 
 def prepare_default_product_photos() -> None:
@@ -64,13 +69,30 @@ def _reindex_opensearch() -> None:
         sys.exit(completed.returncode)
 
 
+def _generate_seed() -> None:
+    """Run generate_seed.py to (re)build snapshot_seed.sql from the CSV archive."""
+    generate_script = SCRIPT_DIR / "generate_seed.py"
+    app_dir = SCRIPT_DIR.parent
+    print("snapshotdb: generating seed SQL from CSV …")
+    result = subprocess.run(
+        [sys.executable, str(generate_script)],
+        cwd=str(app_dir),
+        env=os.environ.copy(),
+    )
+    if result.returncode != 0:
+        print("error: generate_seed.py failed")
+        sys.exit(result.returncode)
+
+
 def main() -> None:
     if not DATABASE_URL:
         print("error: DATABASE_URL is not set")
         sys.exit(1)
 
+    _generate_seed()
+
     if not SEED_FILE.exists():
-        print(f"error: seed file not found: {SEED_FILE}")
+        print(f"error: seed file not found after generation: {SEED_FILE}")
         sys.exit(1)
 
     sql = SEED_FILE.read_text(encoding="utf-8")

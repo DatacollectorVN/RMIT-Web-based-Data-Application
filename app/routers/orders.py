@@ -1,3 +1,5 @@
+import math
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +21,7 @@ async def list_orders(
     return {
         "data": {
             "total": total,
+            "total_pages": math.ceil(total / limit),
             "page": page,
             "limit": limit,
             "items": [OrderResponse.model_validate(o) for o in orders],

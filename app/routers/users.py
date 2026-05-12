@@ -1,3 +1,5 @@
+import math
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,6 +20,7 @@ async def list_users(
     return {
         "data": {
             "total": total,
+            "total_pages": math.ceil(total / limit),
             "page": page,
             "limit": limit,
             "items": [UserResponse.model_validate(u) for u in users],

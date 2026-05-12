@@ -7,6 +7,9 @@ Before indexing, all existing documents in the target index are removed
 (delete_by_query match_all) so stale _id values (for example legacy UUIDs)
 cannot remain alongside current PostgreSQL ids.
 
+If the index does not exist it is created with the correct KNN mapping
+(384-dim cosine similarity) before any documents are uploaded.
+
 Usage:
     python app/scripts/reindex_products.py
 
@@ -15,23 +18,55 @@ Environment variables (loaded from .env):
     OPENSEARCH_URL             -- OpenSearch base URL (default: http://localhost:9200)
     OPENSEARCH_INDEX_PRODUCTS  -- Target index name (default: products)
 """
-import hashlib
 import json
-import math
 import os
 import sys
 from datetime import datetime, timezone
+from pathlib import Path
 
 import psycopg2
 import psycopg2.extras
 import requests
 from dotenv import load_dotenv
 
+# Allow importing from the app/ directory
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from opensearch.embeddings import encode_product_text  # noqa: E402
+
 load_dotenv()
 
 DATABASE_URL: str = os.environ.get("DATABASE_URL", "")
 OPENSEARCH_URL: str = os.environ.get("OPENSEARCH_URL", "http://localhost:9200").rstrip("/")
 INDEX: str = os.environ.get("OPENSEARCH_INDEX_PRODUCTS", "products")
+
+_KNN_INDEX_MAPPING = {
+    "settings": {
+        "index": {
+            "knn": True,
+            "knn.algo_param.ef_search": 100,
+        }
+    },
+    "mappings": {
+        "properties": {
+            "product_id":  {"type": "integer"},
+            "brand":       {"type": "keyword"},
+            "name":        {"type": "text"},
+            "description": {"type": "text"},
+            "category":    {"type": "keyword"},
+            "price":       {"type": "float"},
+            "updated_at":  {"type": "date"},
+            "item_vector": {
+                "type":       "knn_vector",
+                "dimension":  385,
+                "method": {
+                    "name":       "hnsw",
+                    "space_type": "cosinesimil",
+                    "engine":     "nmslib",
+                },
+            },
+        }
+    },
+}
 
 
 def _pg_dsn(url: str) -> str:
@@ -42,28 +77,29 @@ def _pg_dsn(url: str) -> str:
     return url
 
 
-def placeholder_unit_vector_384(seed_text: str) -> list[float]:
-    """
-    Deterministic non-zero unit vector (384-dim) derived from seed_text via SHA-256.
-    Identical algorithm to Go placeholderUnitVector384 in scripts/reindex_products.go.
-    Cosine similarity requires non-zero vectors.
-    """
-    dim = 384
-    vec: list[float] = []
-    counter = 0
-    while len(vec) < dim:
-        h = hashlib.sha256(f"{seed_text}|{counter}".encode()).digest()
-        counter += 1
-        for byte in h:
-            if len(vec) >= dim:
-                break
-            vec.append((byte / 255.0) * 2.0 - 1.0)
+def _ensure_index() -> None:
+    """Drop (if exists) and recreate the OpenSearch index with correct KNN mapping."""
+    base = f"{OPENSEARCH_URL}/{INDEX}"
 
-    norm = math.sqrt(sum(v * v for v in vec))
-    if norm == 0:
-        vec[0] = 1.0
-        norm = 1.0
-    return [v / norm for v in vec]
+    # Always drop so stale mappings (e.g. missing item_vector) are never reused
+    del_resp = requests.delete(base, timeout=15)
+    if del_resp.status_code not in (200, 404):
+        raise RuntimeError(f"DELETE {INDEX} returned HTTP {del_resp.status_code}: {del_resp.text[:300]}")
+    if del_resp.status_code == 200:
+        print(f"opensearch: dropped existing index '{INDEX}'")
+
+    print(f"opensearch: creating index '{INDEX}' with KNN mapping …")
+    resp = requests.put(
+        base,
+        data=json.dumps(_KNN_INDEX_MAPPING),
+        headers={"Content-Type": "application/json"},
+        timeout=30,
+    )
+    if not resp.ok:
+        raise RuntimeError(
+            f"Failed to create index HTTP {resp.status_code}: {resp.text[:500]}"
+        )
+    print(f"opensearch: index '{INDEX}' created")
 
 
 def _truncate_index_documents() -> int:
@@ -132,6 +168,7 @@ def main() -> None:
         conn.close()
 
     try:
+        _ensure_index()
         _truncate_index_documents()
     except requests.exceptions.ConnectionError as exc:
         print(f"target index: {INDEX}")
@@ -168,7 +205,6 @@ def main() -> None:
             updated_at_str = str(updated_at)
 
         pid = int(row["id"])
-        seed = f"{pid} {row['brand']} {row['name']} {row['description']} {row['category']}"
         doc = {
             "product_id": pid,
             "brand": row["brand"],
@@ -176,7 +212,9 @@ def main() -> None:
             "description": row["description"],
             "category": row["category"],
             "price": price,
-            "item_vector": placeholder_unit_vector_384(seed),
+            "item_vector": encode_product_text(
+                row["brand"], row["name"], price, row["category"]
+            ),
             "updated_at": updated_at_str,
         }
 

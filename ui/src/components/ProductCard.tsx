@@ -148,7 +148,7 @@ export default function ProductCard({ product, onSelect, onQuickSelect, selected
         </div>
         {product.price != null ? (
           <p style={{ fontSize: "0.9rem", fontWeight: 800, color: "#1A3028", fontFamily: "'Playfair Display',Georgia,serif" }}>
-            ₹{Number(product.price).toFixed(2)}
+            ${Number(product.price).toFixed(2)}
           </p>
         ) : null}
       </div>

@@ -45,6 +45,7 @@ class ReviewUpdate(BaseModel):
 class ReviewResponse(BaseModel):
     id: int
     user_id: int
+    user_name: str | None = None
     product_id: int
     title: str
     content: str
@@ -60,6 +61,7 @@ class ReviewResponse(BaseModel):
 
 class ReviewListResponse(BaseModel):
     total: int
+    total_pages: int
     page: int
     limit: int
     items: list[ReviewResponse]

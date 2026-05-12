@@ -52,3 +52,4 @@ data/product-photos/**
 !data/product-photos/README.md
 
 archive/
+**/node_modules

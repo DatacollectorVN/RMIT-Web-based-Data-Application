@@ -29,6 +29,9 @@ async def create(db: AsyncSession, data: UserCreate, password_hash: str) -> User
         password_hash=password_hash,
         full_name=data.full_name,
         role=data.role,
+        location=data.location,
+        age=data.age,
+        job=data.job,
     )
     db.add(user)
     await db.commit()
@@ -43,6 +46,12 @@ async def update(db: AsyncSession, user: User, data: UserUpdate, password_hash: 
         user.full_name = data.full_name
     if data.role is not None:
         user.role = data.role
+    if data.location is not None:
+        user.location = data.location
+    if data.age is not None:
+        user.age = data.age
+    if data.job is not None:
+        user.job = data.job
     if password_hash is not None:
         user.password_hash = password_hash
     await db.commit()

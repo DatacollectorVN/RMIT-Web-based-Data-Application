@@ -1,0 +1,4 @@
+ALTER TABLE users
+    DROP COLUMN IF EXISTS location,
+    DROP COLUMN IF EXISTS age,
+    DROP COLUMN IF EXISTS job;

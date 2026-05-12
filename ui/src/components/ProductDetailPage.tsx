@@ -17,13 +17,19 @@ export default function ProductDetailPage({ authUser }: Props) {
   const { productId } = useParams();
   const navigate = useNavigate();
   const [product, setProduct]               = useState<Product | null>(null);
-  const [similarProducts, setSimilar]       = useState<Product[]>([]);
+  const [similarProducts, setSimilar]       = useState<Array<Product & { similarity: number }>>([]);
   const [reviews, setReviews]               = useState<Review[]>([]);
   const [loading, setLoading]               = useState(true);
   const [error, setError]                   = useState<string | null>(null);
   const [showReviewForm, setShowReviewForm] = useState(false);
   const [submitting, setSubmitting]         = useState(false);
   const [reviewStatus, setReviewStatus]     = useState<string | null>(null);
+  const [cartToast, setCartToast]           = useState<string | null>(null);
+
+  const onAddToBag = () => {
+    setCartToast("🚧 Cart coming soon — this feature is under development.");
+    setTimeout(() => setCartToast(null), 3500);
+  };
   const [reviewForm, setReviewForm]         = useState({
     rating:   4,
     title:    "",
@@ -41,7 +47,7 @@ export default function ProductDetailPage({ authUser }: Props) {
     setError(null);
     Promise.all([
       fetchProductById(productId),
-      fetchSimilarProducts(productId, 4).catch(() => []),
+      fetchSimilarProducts(productId, 4, authUser?.id ? String(authUser.id) : null).catch(() => []),
       fetchProductReviews(productId, 20).catch(() => [])
     ])
       .then(([p, sim, rev]) => {
@@ -51,7 +57,7 @@ export default function ProductDetailPage({ authUser }: Props) {
       })
       .catch(() => setError("Failed to load this product."))
       .finally(() => setLoading(false));
-  }, [productId]);
+  }, [productId, authUser?.id]);
 
   if (loading) {
     return <div style={{ maxWidth: 1100, margin: "0 auto", padding: "28px", color: "#687860" }}>Loading product...</div>;
@@ -180,26 +186,24 @@ export default function ProductDetailPage({ authUser }: Props) {
           {/* BUG 4 + BUG 5 fixed: proper price format, no fake discount */}
           <div style={{ marginBottom: 8 }}>
             <p style={{ fontFamily: "'Playfair Display',serif", fontSize: 30, color: "#1A3028", margin: 0 }}>
-              {product.price != null ? `₹${Number(product.price).toFixed(2)}` : "Price unavailable"}
+              {product.price != null ? `$${Number(product.price).toFixed(2)}` : "Price unavailable"}
             </p>
           </div>
           <div style={{ borderTop: "1px solid #D4DCC8", marginTop: 10, paddingTop: 12 }}>
             <p style={{ fontSize: 14, color: "#4D5948", margin: "0 0 14px", lineHeight: 1.6 }}>
               {product.description || "Premium beauty product — dermatologist tested."}
             </p>
-            <button type="button" onClick={() => navigate(`/buyer?productId=${encodeURIComponent(product.product_id)}&brand=${encodeURIComponent(product.brand_name)}&action=cart`)} style={{ width: "100%", background: "#FFFFFF", border: "1px solid #D4DCC8", fontSize: 18, fontWeight: 500, color: "#1A3028", padding: "12px 14px", cursor: "pointer", borderRadius: 12, marginBottom: 10, fontFamily: "'Inter', sans-serif" }}>
+            {cartToast && (
+              <p style={{ fontSize: 12, color: "#92640A", background: "#FEF3C7", border: "1px solid #F9C74F", borderRadius: 6, padding: "8px 12px", marginBottom: 10 }}>
+                {cartToast}
+              </p>
+            )}
+            <button type="button" onClick={onAddToBag} style={{ width: "100%", background: "#FFFFFF", border: "1px solid #D4DCC8", fontSize: 18, fontWeight: 500, color: "#1A3028", padding: "12px 14px", cursor: "pointer", borderRadius: 12, marginBottom: 10, fontFamily: "'Inter', sans-serif" }}>
               Add to bag
             </button>
             <button type="button" onClick={openReviewForm} style={{ width: "100%", background: "#FFFFFF", border: "1px solid #D4DCC8", fontSize: 18, fontWeight: 500, color: "#1A3028", padding: "12px 14px", cursor: "pointer", borderRadius: 12, marginBottom: 12, fontFamily: "'Inter', sans-serif" }}>
               Write a review
             </button>
-            {/* BUG 10 fixed: show AI insight only when we have real review data */}
-            {verifiedBuyerPct !== null && (
-              <div style={{ border: "1px solid #CFE0D7", background: "#F7FAF8", borderRadius: 2, padding: "10px 12px" }}>
-                <p style={{ margin: 0, color: "#1A3028", fontSize: 16, fontWeight: 700 }}>AI insight</p>
-                <p style={{ margin: "2px 0 0", color: "#687860", fontSize: 14 }}>{verifiedBuyerPct}% of reviewers are verified buyers</p>
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -207,7 +211,10 @@ export default function ProductDetailPage({ authUser }: Props) {
       {/* Similar products */}
       {similarToShow.length > 0 && (
         <div style={{ marginTop: 16, borderTop: "1px solid #D4DCC8", paddingTop: 12 }}>
-          <h2 style={{ fontFamily: "'Playfair Display',serif", fontSize: 22, color: "#1A3028", marginBottom: 10 }}>You might also love</h2>
+          <h2 style={{ fontFamily: "'Playfair Display',serif", fontSize: 22, color: "#1A3028", marginBottom: 10 }}>
+            You might also love
+            {authUser && <span style={{ fontSize: 12, fontWeight: 400, color: "#3A7D52", marginLeft: 10 }}>· personalised for you</span>}
+          </h2>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 10 }}>
             {similarToShow.map((item, idx) => {
               const itemImage = resolveImageUrl(item.image_local);
@@ -230,7 +237,11 @@ export default function ProductDetailPage({ authUser }: Props) {
                   <div style={{ padding: 10 }}>
                     <p style={{ margin: 0, fontSize: 11, color: "#687860", textTransform: "uppercase" }}>{item.brand_name}</p>
                     <p style={{ margin: "2px 0", fontFamily: "'Playfair Display',serif", fontSize: 14, lineHeight: 1.2, color: "#1A3028" }}>{item.product_title}</p>
-                    <p style={{ margin: 0, color: "#3A7D52", fontWeight: 700, fontSize: 12 }}>{96 - idx * 2}% similar</p>
+                    <p style={{ margin: 0, color: "#3A7D52", fontWeight: 700, fontSize: 12 }}>
+                      {item.similarity > 0
+                        ? `${Math.round(item.similarity * 100)}% similar`
+                        : "Similar product"}
+                    </p>
                   </div>
                 </div>
               );
@@ -298,22 +309,30 @@ export default function ProductDetailPage({ authUser }: Props) {
         {reviews.length === 0 ? (
           <div style={{ background: "#FFFFFF", border: "1px solid #D4DCC8", padding: 14, color: "#687860", fontSize: 13 }}>No reviews yet for this product.</div>
         ) : (
-          reviews.map((r) => (
-            <div key={r.review_id} style={{ background: "#FFFFFF", border: "1px solid #D4DCC8", padding: 12, marginBottom: 8 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <p style={{ margin: 0, fontWeight: 700, color: "#1A3028" }}>{r.author || "Anonymous"}</p>
-                <p style={{ margin: 0, color: "#C9A84C", fontSize: 14 }}>{"★".repeat(Math.max(0, Math.min(5, r.review_rating)))}{"☆".repeat(5 - Math.max(0, Math.min(5, r.review_rating)))}</p>
+          reviews.map((r) => {
+            const authorName  = r.author || "Anonymous";
+            const initials    = authorName.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+            const clampRating = Math.max(0, Math.min(5, r.review_rating));
+            return (
+              <div key={r.review_id} style={{ background: "#FFFFFF", border: "1px solid #D4DCC8", padding: 14, marginBottom: 8, borderRadius: 4 }}>
+                {/* Author row */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ width: 34, height: 34, borderRadius: "50%", background: "#3A7D52", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#FFFFFF" }}>{initials}</span>
+                    </div>
+                    <div>
+                      <p style={{ margin: 0, fontWeight: 700, color: "#1A3028", fontSize: 14 }}>{authorName}</p>
+                      <p style={{ margin: 0, fontSize: 11, color: "#687860" }}>{r.created_at ? new Date(r.created_at).toLocaleDateString() : ""}</p>
+                    </div>
+                  </div>
+                  <p style={{ margin: 0, color: "#C9A84C", fontSize: 15, letterSpacing: 1 }}>{"★".repeat(clampRating)}{"☆".repeat(5 - clampRating)}</p>
+                </div>
+                {r.review_title && <p style={{ margin: "0 0 4px", fontWeight: 600, fontSize: 13, color: "#1A3028" }}>{r.review_title}</p>}
+                <p style={{ margin: 0, color: "#455146", fontSize: 13, lineHeight: 1.5 }}>{r.review_text}</p>
               </div>
-              {r.review_title && <p style={{ margin: "4px 0 2px", fontWeight: 600, fontSize: 13, color: "#1A3028" }}>{r.review_title}</p>}
-              <p style={{ margin: "6px 0 8px", color: "#455146", fontSize: 13, lineHeight: 1.5 }}>{r.review_text}</p>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span style={{ background: "#D4EDDA", color: "#155724", fontSize: 11, padding: "2px 8px", borderRadius: 2, fontWeight: 600 }}>
-                  {r.is_a_buyer ? "Verified Buyer" : "Non-Buyer"}
-                </span>
-                <span style={{ fontSize: 11, color: "#687860" }}>{r.created_at ? new Date(r.created_at).toLocaleDateString() : ""}</span>
-              </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
 

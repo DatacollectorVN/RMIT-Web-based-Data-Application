@@ -21,6 +21,7 @@ export type AuthUser = {
   username: string;
   role: UserRole;
   token?: string;
+  id?: number;
 };
 
 export type ReviewInput = {
