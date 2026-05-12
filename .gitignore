@@ -50,3 +50,5 @@ build/
 data/product-photos/**
 !data/product-photos/.gitkeep
 !data/product-photos/README.md
+
+archive/

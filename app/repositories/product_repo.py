@@ -19,8 +19,13 @@ async def list_all(db: AsyncSession, page: int, limit: int) -> tuple[list[Produc
     offset = (page - 1) * limit
     count_result = await db.execute(select(func.count()).select_from(Product))
     total = count_result.scalar_one()
-    # No photo join — list endpoint returns product table columns only.
-    result = await db.execute(select(Product).order_by(Product.id).offset(offset).limit(limit))
+    result = await db.execute(
+        select(Product)
+        .options(selectinload(Product.photos))
+        .order_by(Product.id)
+        .offset(offset)
+        .limit(limit)
+    )
     return list(result.scalars().all()), total
 
 

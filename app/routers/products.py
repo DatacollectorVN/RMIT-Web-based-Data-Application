@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
 from opensearch.client import get_opensearch
 from schemas.photo import PhotoResponse, PhotoUpdate
-from schemas.product import ProductCreate, ProductResponse, ProductSummaryResponse, ProductUpdate
+from schemas.product import ProductCreate, ProductResponse, ProductUpdate
 from services import product_service
 
 router = APIRouter(prefix="/products", tags=["products"])
@@ -62,7 +62,7 @@ async def list_products(
             "total": total,
             "page": page,
             "limit": limit,
-            "items": [ProductSummaryResponse.model_validate(p) for p in products],
+            "items": [_product_detail_response(p) for p in products],
         }
     }
 

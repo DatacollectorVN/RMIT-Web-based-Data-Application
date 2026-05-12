@@ -3,6 +3,10 @@
 Reads all rows from the PostgreSQL `products` table and bulk-uploads them
 to the OpenSearch `products` index.
 
+Before indexing, all existing documents in the target index are removed
+(delete_by_query match_all) so stale _id values (for example legacy UUIDs)
+cannot remain alongside current PostgreSQL ids.
+
 Usage:
     python app/scripts/reindex_products.py
 
@@ -62,6 +66,42 @@ def placeholder_unit_vector_384(seed_text: str) -> list[float]:
     return [v / norm for v in vec]
 
 
+def _truncate_index_documents() -> int:
+    """
+    Delete every document in INDEX while keeping index settings/mapping.
+    Returns number of documents deleted, or -1 if the index did not exist.
+    """
+    base = f"{OPENSEARCH_URL}/{INDEX}"
+    head = requests.head(base, timeout=15)
+    if head.status_code == 404:
+        print(f"opensearch: index '{INDEX}' not found; skipping truncate")
+        return -1
+    if not head.ok:
+        raise RuntimeError(f"HEAD {INDEX} returned HTTP {head.status_code}: {head.text[:300]}")
+
+    dq_url = f"{base}/_delete_by_query"
+    resp = requests.post(
+        dq_url,
+        data=json.dumps({"query": {"match_all": {}}}),
+        headers={"Content-Type": "application/json"},
+        params={"refresh": "true", "conflicts": "proceed"},
+        timeout=120,
+    )
+    if not resp.ok:
+        raise RuntimeError(
+            f"delete_by_query failed HTTP {resp.status_code}: {resp.text[:500]}"
+        )
+    body = resp.json()
+    if body.get("timed_out"):
+        raise RuntimeError("delete_by_query timed out")
+    deleted = int(body.get("deleted", 0))
+    failures = body.get("failures") or []
+    if failures:
+        raise RuntimeError(f"delete_by_query reported failures: {failures[:3]}")
+    print(f"opensearch: truncated {deleted} document(s) from index '{INDEX}'")
+    return deleted
+
+
 def main() -> None:
     if not DATABASE_URL or not OPENSEARCH_URL:
         print("reindex summary: indexed=0 failed=0 skipped=1")
@@ -91,10 +131,23 @@ def main() -> None:
     finally:
         conn.close()
 
+    try:
+        _truncate_index_documents()
+    except requests.exceptions.ConnectionError as exc:
+        print(f"target index: {INDEX}")
+        print("reindex summary: indexed=0 failed=1 skipped=0")
+        print(f"reason: OpenSearch truncate failed (connection): {exc}")
+        sys.exit(1)
+    except RuntimeError as exc:
+        print(f"target index: {INDEX}")
+        print("reindex summary: indexed=0 failed=1 skipped=0")
+        print(f"reason: OpenSearch truncate failed: {exc}")
+        sys.exit(1)
+
     if not rows:
         print(f"target index: {INDEX}")
         print("reindex summary: indexed=0 failed=0 skipped=0")
-        print("note: no products found in PostgreSQL")
+        print("note: no products found in PostgreSQL (index is empty)")
         return
 
     ndjson_lines: list[str] = []
