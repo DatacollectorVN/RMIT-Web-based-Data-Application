@@ -113,8 +113,11 @@ async function getAllProducts(): Promise<Product[]> {
 export async function fetchProductsPage(
   page: number,
   limit: number,
+  brand?: string,
 ): Promise<{ items: Product[]; total: number; total_pages: number; page: number }> {
-  const res = await fetch(`/api/v1/products/?page=${page}&limit=${limit}`);
+  const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+  if (brand) params.set("brand", brand);
+  const res = await fetch(`/api/v1/products/?${params}`);
   if (!res.ok) throw new Error("Failed to fetch products");
   const json = await res.json() as { data: { items: RawProduct[]; total: number; total_pages: number; page: number } };
   return {

@@ -29,12 +29,17 @@ async def get_by_ids_in_order(db: AsyncSession, ids: list[int]) -> list[Product]
     return [by_id[i] for i in ids if i in by_id]
 
 
-async def list_all(db: AsyncSession, page: int, limit: int) -> tuple[list[Product], int]:
+async def list_all(
+    db: AsyncSession, page: int, limit: int, brand: str | None = None
+) -> tuple[list[Product], int]:
     offset = (page - 1) * limit
-    count_result = await db.execute(select(func.count()).select_from(Product))
+    base = select(Product)
+    if brand:
+        base = base.where(Product.brand == brand)
+    count_result = await db.execute(select(func.count()).select_from(base.subquery()))
     total = count_result.scalar_one()
     result = await db.execute(
-        select(Product)
+        base
         .options(selectinload(Product.photos))
         .order_by(Product.id)
         .offset(offset)

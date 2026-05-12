@@ -59,9 +59,10 @@ async def add_product(
 async def list_products(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
+    brand: str | None = Query(None, description="Filter by brand name"),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    products, total = await product_service.list_products(db, page, limit)
+    products, total = await product_service.list_products(db, page, limit, brand)
     stats = await product_repo.get_review_stats(db, [p.id for p in products])
     return {
         "data": {

@@ -1,40 +1,46 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import ProductCard from "../components/ProductCard";
-import { fetchBrands, fetchProducts, searchProducts } from "../api";
+import { fetchBrands, fetchProductsPage, searchProducts } from "../api";
 import type { AuthUser, Product } from "../types";
+
+const PAGE_LIMIT = 100;
 
 type Props = {
   authUser: AuthUser | null;
-  // Optional: used by ManagePage so clicking a card selects it for editing
-  // instead of navigating to the product detail page.
   selectedProductId?: string;
   onProductSelect?: (product: Product) => void;
-  // Increment this key from ManagePage to trigger a product list refresh
   refreshKey?: number;
 };
 
 export default function BuyerPage({ authUser, selectedProductId, onProductSelect, refreshKey }: Props) {
   const navigate = useNavigate();
 
-  const [items, setItems]     = useState<Product[]>([]);
-  const [brands, setBrands]   = useState<string[]>([]);
-  const [brand, setBrand]     = useState("");
-  const [query, setQuery]     = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError]     = useState<string | null>(null);
-  const [toast, setToast]     = useState<string | null>(null);
+  const [items, setItems]           = useState<Product[]>([]);
+  const [brands, setBrands]         = useState<string[]>([]);
+  const [brand, setBrand]           = useState("");
+  const [query, setQuery]           = useState("");
+  const [page, setPage]             = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal]           = useState(0);
+  const [loading, setLoading]       = useState(false);
+  const [error, setError]           = useState<string | null>(null);
+  const [toast, setToast]           = useState<string | null>(null);
+  const [isSearch, setIsSearch]     = useState(false);
 
   const shownBrands = useMemo(() => brands.slice(0, 16), [brands]);
 
   // ── Data fetching ──────────────────────────────────────────────────────────
 
-  const loadProducts = async (activeBrand?: string) => {
+  const loadProducts = async (activePage: number, activeBrand: string) => {
     setLoading(true);
     setError(null);
+    setIsSearch(false);
     try {
-      const data = await fetchProducts(24, 0, activeBrand || undefined);
+      const data = await fetchProductsPage(activePage, PAGE_LIMIT, activeBrand || undefined);
       setItems(data.items);
+      setTotalPages(data.total_pages);
+      setTotal(data.total);
     } catch {
       setError("Failed to load products. Please try again.");
     } finally {
@@ -42,19 +48,28 @@ export default function BuyerPage({ authUser, selectedProductId, onProductSelect
     }
   };
 
-  useEffect(() => { void loadProducts(brand); }, [brand, refreshKey]);
-  useEffect(() => { fetchBrands().then(setBrands).catch(() => {}); }, []);
+  useEffect(() => {
+    void loadProducts(page, brand);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, brand, refreshKey]);
+
+  useEffect(() => {
+    fetchBrands().then(setBrands).catch(() => {});
+  }, []);
 
   // ── Handlers ───────────────────────────────────────────────────────────────
 
   const onSearch = async (e: FormEvent) => {
     e.preventDefault();
-    if (!query.trim()) { void loadProducts(brand); return; }
+    if (!query.trim()) { void loadProducts(page, brand); return; }
     setLoading(true);
     setError(null);
     try {
       const data = await searchProducts(query.trim());
       setItems(data.items);
+      setTotalPages(1);
+      setTotal(data.items.length);
+      setIsSearch(true);
     } catch {
       setError("Search failed. Try another keyword.");
     } finally {
@@ -62,7 +77,17 @@ export default function BuyerPage({ authUser, selectedProductId, onProductSelect
     }
   };
 
-  const onClear = () => { setBrand(""); setQuery(""); void loadProducts(); };
+  const onBrandChange = (b: string) => {
+    setBrand(b);
+    setPage(1);   // reset to page 1 on brand change
+    setQuery("");
+  };
+
+  const onClear = () => {
+    setBrand("");
+    setQuery("");
+    setPage(1);
+  };
 
   const onQuickAddToCart = (product: Product) => {
     setToast(`🚧 Cart coming soon — "${product.product_title}" not added yet.`);
@@ -70,8 +95,8 @@ export default function BuyerPage({ authUser, selectedProductId, onProductSelect
   };
 
   const onCardSelect = (product: Product) => {
-    if (onProductSelect) onProductSelect(product);   // ManagePage: select for editing
-    else navigate(`/product/${product.product_id}`); // BuyerPage: go to detail
+    if (onProductSelect) onProductSelect(product);
+    else navigate(`/product/${product.product_id}`);
   };
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -118,21 +143,26 @@ export default function BuyerPage({ authUser, selectedProductId, onProductSelect
 
       {/* Brand filter pills */}
       <div style={styles.pillsRow}>
-        <BrandPill label="All" active={!brand} onClick={() => setBrand("")} />
+        <BrandPill label="All" active={!brand} onClick={() => onBrandChange("")} />
         {shownBrands.map(b => (
-          <BrandPill key={b} label={b} active={brand === b} onClick={() => setBrand(b)} />
+          <BrandPill key={b} label={b} active={brand === b} onClick={() => onBrandChange(b)} />
         ))}
       </div>
 
       {/* Status feedback */}
       <div style={{ maxWidth: 1180, margin: "12px auto 0", padding: "0 28px" }}>
-        {toast  && <p style={styles.toast}>{toast}</p>}
-        {error  && <p style={styles.errorMsg}>{error}</p>}
+        {toast   && <p style={styles.toast}>{toast}</p>}
+        {error   && <p style={styles.errorMsg}>{error}</p>}
         {loading && <p style={{ fontSize: 12, color: "#687860" }}>Loading products…</p>}
+        {!loading && !error && !isSearch && (
+          <p style={{ fontSize: 11, color: "#687860" }}>
+            {total.toLocaleString()} product{total !== 1 ? "s" : ""}{brand ? ` in ${brand}` : ""} · page {page} of {totalPages}
+          </p>
+        )}
       </div>
 
       {/* Product grid */}
-      <div style={{ maxWidth: 1180, margin: "20px auto", padding: "0 20px" }}>
+      <div style={{ maxWidth: 1180, margin: "16px auto 0", padding: "0 20px" }}>
         {items.length === 0 && !loading ? (
           <div style={{ textAlign: "center", padding: "60px 0", color: "#687860" }}>
             <p style={{ fontSize: 16 }}>No products found.</p>
@@ -152,8 +182,36 @@ export default function BuyerPage({ authUser, selectedProductId, onProductSelect
           </div>
         )}
       </div>
+
+      {/* Pagination */}
+      {!isSearch && totalPages > 1 && (
+        <div style={styles.pagination}>
+          <PagBtn label="← Prev" disabled={page <= 1}          onClick={() => setPage(p => p - 1)} />
+          {buildPageNumbers(page, totalPages).map((n, i) =>
+            n === "…"
+              ? <span key={`ellipsis-${i}`} style={{ padding: "0 4px", color: "#687860", fontSize: 12 }}>…</span>
+              : <PagBtn key={n} label={String(n)} active={n === page} onClick={() => setPage(Number(n))} />
+          )}
+          <PagBtn label="Next →" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} />
+        </div>
+      )}
+
+      {/* Bottom spacer */}
+      <div style={{ height: 40 }} />
     </>
   );
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function buildPageNumbers(current: number, total: number): (number | "…")[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const pages: (number | "…")[] = [1];
+  if (current > 3) pages.push("…");
+  for (let i = Math.max(2, current - 1); i <= Math.min(total - 1, current + 1); i++) pages.push(i);
+  if (current < total - 2) pages.push("…");
+  pages.push(total);
+  return pages;
 }
 
 // ── Sub-components ───────────────────────────────────────────────────────────
@@ -161,17 +219,42 @@ export default function BuyerPage({ authUser, selectedProductId, onProductSelect
 function BrandPill({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
   return (
     <button type="button" onClick={onClick} style={{
-      border:      `1.5px solid ${active ? "#3A7D52" : "#D4DCC8"}`,
-      background:  active ? "#3A7D52" : "#FFFFFF",
-      color:       active ? "#FFFFFF" : "#1A3028",
-      fontSize:    11,
-      fontWeight:  500,
-      padding:     "5px 16px",
+      border:       `1.5px solid ${active ? "#3A7D52" : "#D4DCC8"}`,
+      background:   active ? "#3A7D52" : "#FFFFFF",
+      color:        active ? "#FFFFFF" : "#1A3028",
+      fontSize:     11,
+      fontWeight:   500,
+      padding:      "5px 16px",
       borderRadius: 20,
-      cursor:      "pointer",
-      whiteSpace:  "nowrap",
-      flexShrink:  0,
+      cursor:       "pointer",
+      whiteSpace:   "nowrap",
+      flexShrink:   0,
     }}>
+      {label}
+    </button>
+  );
+}
+
+function PagBtn({ label, onClick, disabled = false, active = false }: {
+  label: string; onClick: () => void; disabled?: boolean; active?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        border:       `1.5px solid ${active ? "#3A7D52" : "#D4DCC8"}`,
+        background:   active ? "#3A7D52" : "#FFFFFF",
+        color:        active ? "#FFFFFF" : disabled ? "#BBBBBB" : "#1A3028",
+        fontSize:     11,
+        fontWeight:   active ? 700 : 500,
+        padding:      "6px 12px",
+        borderRadius: 4,
+        cursor:       disabled ? "default" : "pointer",
+        minWidth:     32,
+      }}
+    >
       {label}
     </button>
   );
@@ -180,20 +263,18 @@ function BrandPill({ label, active, onClick }: { label: string; active: boolean;
 // ── Styles ───────────────────────────────────────────────────────────────────
 
 const styles: Record<string, React.CSSProperties> = {
-  banner: {
-    background: "linear-gradient(135deg,#1A3028 0%,#2C5F3E 60%,#3A7D52 100%)",
-    padding:    "36px 28px 32px",
-  },
-  bannerInner:  { maxWidth: 1180, margin: "0 auto" },
-  bannerLabel:  { fontSize: 9, fontWeight: 600, letterSpacing: "1.5px", textTransform: "uppercase" as const, color: "#A8D8B8" },
-  bannerTitle:  { fontFamily: "'Playfair Display',serif", fontSize: 32, fontWeight: 800, color: "#FFFFFF", margin: "0 0 6px" },
-  bannerSub:    { fontSize: 12, color: "#D4DCC8", margin: 0 },
-  searchBar:    { background: "#E8EDD8", padding: "12px 28px", borderBottom: "1px solid #D4DCC8" },
-  searchInput:  { width: "100%", border: "1.5px solid #D4DCC8", borderRadius: 2, padding: "9px 12px 9px 34px", fontSize: 12, background: "#FFFFFF", color: "#1A3028", boxSizing: "border-box" as const },
-searchBtn:    { background: "#3A7D52", color: "#FFFFFF", border: "none", borderRadius: 2, padding: "9px 20px", fontSize: 11, fontWeight: 600, cursor: "pointer" },
-  clearBtn:     { background: "none", border: "1.5px solid #D4DCC8", borderRadius: 2, padding: "9px 14px", fontSize: 11, color: "#687860", cursor: "pointer" },
-  pillsRow:     { background: "#FFFFFF", padding: "10px 28px", borderBottom: "1px solid #D4DCC8", display: "flex", gap: 8, overflowX: "auto" as const, justifyContent: "center" },
-  grid:         { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 },
-  toast:        { fontSize: 12, color: "#2D6A4F", background: "#EAF4EE", border: "1px solid #A8D8B8", borderRadius: 4, padding: "8px 12px", marginBottom: 6 },
-  errorMsg:     { fontSize: 12, color: "#C0392B", background: "#FDECEA", border: "1px solid #F5A7A5", borderRadius: 4, padding: "8px 12px", marginBottom: 6 },
+  banner:      { background: "linear-gradient(135deg,#1A3028 0%,#2C5F3E 60%,#3A7D52 100%)", padding: "36px 28px 32px" },
+  bannerInner: { maxWidth: 1180, margin: "0 auto" },
+  bannerLabel: { fontSize: 9, fontWeight: 600, letterSpacing: "1.5px", textTransform: "uppercase" as const, color: "#A8D8B8" },
+  bannerTitle: { fontFamily: "'Playfair Display',serif", fontSize: 32, fontWeight: 800, color: "#FFFFFF", margin: "0 0 6px" },
+  bannerSub:   { fontSize: 12, color: "#D4DCC8", margin: 0 },
+  searchBar:   { background: "#E8EDD8", padding: "12px 28px", borderBottom: "1px solid #D4DCC8" },
+  searchInput: { width: "100%", border: "1.5px solid #D4DCC8", borderRadius: 2, padding: "9px 12px 9px 34px", fontSize: 12, background: "#FFFFFF", color: "#1A3028", boxSizing: "border-box" as const },
+  searchBtn:   { background: "#3A7D52", color: "#FFFFFF", border: "none", borderRadius: 2, padding: "9px 20px", fontSize: 11, fontWeight: 600, cursor: "pointer" },
+  clearBtn:    { background: "none", border: "1.5px solid #D4DCC8", borderRadius: 2, padding: "9px 14px", fontSize: 11, color: "#687860", cursor: "pointer" },
+  pillsRow:    { background: "#FFFFFF", padding: "10px 28px", borderBottom: "1px solid #D4DCC8", display: "flex", gap: 8, overflowX: "auto" as const, justifyContent: "center" },
+  grid:        { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 },
+  pagination:  { display: "flex", justifyContent: "center", alignItems: "center", gap: 6, padding: "24px 20px 0" },
+  toast:       { fontSize: 12, color: "#2D6A4F", background: "#EAF4EE", border: "1px solid #A8D8B8", borderRadius: 4, padding: "8px 12px", marginBottom: 6 },
+  errorMsg:    { fontSize: 12, color: "#C0392B", background: "#FDECEA", border: "1px solid #F5A7A5", borderRadius: 4, padding: "8px 12px", marginBottom: 6 },
 };

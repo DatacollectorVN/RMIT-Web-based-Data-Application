@@ -17,8 +17,10 @@ async def get_product(db: AsyncSession, product_id: int) -> Product:
     return product
 
 
-async def list_products(db: AsyncSession, page: int, limit: int) -> tuple[list[Product], int]:
-    return await product_repo.list_all(db, page, limit)
+async def list_products(
+    db: AsyncSession, page: int, limit: int, brand: str | None = None
+) -> tuple[list[Product], int]:
+    return await product_repo.list_all(db, page, limit, brand)
 
 
 async def add_product_with_photo(
