@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
-import { createReview, fetchProductById, fetchProductReviews, fetchSimilarProducts, resolveImageUrl } from "../api";
+import { createReview, fetchProductById, fetchProductReviews, fetchSimilarProducts, resolveImageUrl, triggerCountingPredict, triggerSemanticPredict } from "../api";
 import type { AuthUser, Product, Review } from "../types";
 
 type Props = {
@@ -25,17 +25,16 @@ export default function ProductDetailPage({ authUser }: Props) {
   const [submitting, setSubmitting]         = useState(false);
   const [reviewStatus, setReviewStatus]     = useState<string | null>(null);
   const [cartToast, setCartToast]           = useState<string | null>(null);
+  const [aiModel, setAiModel]               = useState<"counting" | "semantic">("counting");
+  const [semanticVariant, setSemanticVariant] = useState<"nli" | "miniLM">("nli");
+  const [threshold, setThreshold]           = useState(0.5);
+  const [reviewProcessing, setReviewProcessing] = useState(false);
 
   const onAddToBag = () => {
     setCartToast("🚧 Cart coming soon — this feature is under development.");
     setTimeout(() => setCartToast(null), 3500);
   };
-  const [reviewForm, setReviewForm]         = useState({
-    rating:   4,
-    title:    "",
-    body:     "",
-    override: "auto" as "auto" | "buy" | "not_buy"
-  });
+  const [reviewForm, setReviewForm] = useState({ rating: 4, title: "", body: "" });
 
   useEffect(() => {
     if (!productId) {
@@ -91,12 +90,10 @@ export default function ProductDetailPage({ authUser }: Props) {
     { id: "thumb-2", bg: "#DCCFE7",                     src: imageUrl, emoji: product.brand_emoji || "💋" },
     { id: "thumb-3", bg: "#D1C3AA",                     src: imageUrl, emoji: product.brand_emoji || "🌸" }
   ];
-  const similarToShow      = similarProducts.filter(p => p.product_id !== product.product_id).slice(0, 4);
-  const predictedLabel     = reviewForm.rating >= 4 ? "Verified Buyer" : "Non-Buyer";
-  const bodyLenFactor      = Math.min(reviewForm.body.trim().length / 200, 1);
-  const predictionConfidence = `${(72 + bodyLenFactor * 20).toFixed(1)}%`;
+  const similarToShow = similarProducts.filter(p => p.product_id !== product.product_id).slice(0, 4);
 
   const openReviewForm = () => {
+    if (!authUser) { navigate("/login"); return; }
     setShowReviewForm(true);
     setReviewStatus(null);
     setTimeout(() => {
@@ -109,19 +106,24 @@ export default function ProductDetailPage({ authUser }: Props) {
     setSubmitting(true);
     setReviewStatus(null);
     try {
-      await createReview(
+      const created = await createReview(
         product.product_id,
-        {
-          title:           reviewForm.title,
-          body:            reviewForm.body,
-          rating:          reviewForm.rating,
-          predicted_label: predictedLabel === "Verified Buyer" ? "buy" : "not_buy",
-          override_label:  reviewForm.override === "auto" ? "" : reviewForm.override
-        },
-        authUser?.token
+        { title: reviewForm.title, body: reviewForm.body, rating: reviewForm.rating },
+        authUser!.id!,
       );
-      setReviewStatus("Review submitted successfully.");
-      setReviewForm({ rating: 4, title: "", body: "", override: "auto" });
+      setReviewForm({ rating: 4, title: "", body: "" });
+
+      // Trigger AI in background (fire-and-forget) — pass actual review content
+      setReviewProcessing(true);
+      setReviewStatus("⏳ Review submitted! Our AI is analysing it in the background…");
+      const aiBody = { review_title: reviewForm.title, review_text: reviewForm.body, review_rating: reviewForm.rating };
+      if (aiModel === "counting") {
+        void triggerCountingPredict(created.id, product.product_id, authUser?.id, threshold, aiBody);
+      } else {
+        void triggerSemanticPredict(created.id, product.product_id, semanticVariant, authUser?.id, threshold, aiBody);
+      }
+      setReviewProcessing(false);
+
       const latest = await fetchProductReviews(product.product_id, 20);
       setReviews(latest);
     } catch (err) {
@@ -129,6 +131,7 @@ export default function ProductDetailPage({ authUser }: Props) {
       setReviewStatus(msg.includes("401") ? "Please login to submit a review." : `Error: ${msg}`);
     } finally {
       setSubmitting(false);
+      setReviewProcessing(false);
     }
   };
 
@@ -283,26 +286,63 @@ export default function ProductDetailPage({ authUser }: Props) {
             <textarea value={reviewForm.body} onChange={(e) => setReviewForm((prev) => ({ ...prev, body: e.target.value }))} placeholder="Tell others what you think..." style={{ width: "100%", border: "1px solid #D4DCC8", borderRadius: 10, padding: "12px 14px", fontSize: 16, color: "#1A3028", minHeight: 120, resize: "vertical", marginBottom: 8 }} minLength={10} required />
             <p style={{ marginTop: 0, marginBottom: 10, color: "#687860", fontSize: 12 }}>Minimum 10 characters</p>
 
-            <div style={{ border: "1px solid #CFE0D7", background: "#F7FAF8", borderRadius: 2, padding: "10px 12px", marginBottom: 10 }}>
-              <p style={{ margin: 0, color: "#687860", fontSize: 11, letterSpacing: "1.2px", fontWeight: 700 }}>AI PREDICTION</p>
-              <p style={{ margin: "4px 0 0", color: predictedLabel === "Verified Buyer" ? "#2D6A4F" : "#721C24", fontSize: 14, fontWeight: 700 }}>{predictedLabel} {predictedLabel === "Verified Buyer" ? "✓" : ""}</p>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 2 }}>
-                <p style={{ margin: 0, color: "#687860", fontSize: 12 }}>Confidence: {predictionConfidence}</p>
-                <select value={reviewForm.override} onChange={(e) => setReviewForm((prev) => ({ ...prev, override: e.target.value as "auto" | "buy" | "not_buy" }))} style={{ border: "1px solid #D4DCC8", borderRadius: 10, padding: "6px 8px", fontSize: 12, color: "#1A3028", background: "#FFFFFF" }}>
-                  <option value="auto">Auto</option>
-                  <option value="buy">Buyer</option>
-                  <option value="not_buy">Non-Buyer</option>
-                </select>
+            {/* AI model selector */}
+            <div style={{ border: "1px solid #D4DCC8", background: "#FAFAF8", borderRadius: 8, padding: "12px 14px", marginBottom: 14 }}>
+              <p style={{ margin: "0 0 10px", fontWeight: 700, letterSpacing: "1.2px", color: "#687860", fontSize: 11 }}>AI ANALYSIS MODEL</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, color: "#1A3028" }}>
+                  <input type="radio" name="aiModel" value="counting" checked={aiModel === "counting"} onChange={() => setAiModel("counting")} />
+                  <span><strong>Counting Model</strong> — Random Forest</span>
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, color: "#1A3028" }}>
+                  <input type="radio" name="aiModel" value="semantic" checked={aiModel === "semantic"} onChange={() => setAiModel("semantic")} />
+                  <span><strong>Semantic Model</strong> — NLP-based</span>
+                </label>
+                {aiModel === "semantic" && (
+                  <div style={{ marginLeft: 22, display: "flex", flexDirection: "column", gap: 6, paddingTop: 4, borderTop: "1px dashed #D4DCC8" }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, color: "#1A3028" }}>
+                      <input type="radio" name="semanticVariant" value="nli" checked={semanticVariant === "nli"} onChange={() => setSemanticVariant("nli")} />
+                      NLI — DeBERTa
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, color: "#1A3028" }}>
+                      <input type="radio" name="semanticVariant" value="miniLM" checked={semanticVariant === "miniLM"} onChange={() => setSemanticVariant("miniLM")} />
+                      MiniLM
+                    </label>
+                  </div>
+                )}
+
+                {/* Threshold slider */}
+                <div style={{ paddingTop: 10, borderTop: "1px dashed #D4DCC8", marginTop: 4 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: "#687860", letterSpacing: "0.8px" }}>BUYER THRESHOLD</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "#3A7D52", minWidth: 32, textAlign: "right" }}>{threshold.toFixed(2)}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0} max={1} step={0.01}
+                    value={threshold}
+                    onChange={e => setThreshold(Number(e.target.value))}
+                    style={{ width: "100%", accentColor: "#3A7D52", cursor: "pointer" }}
+                  />
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#687860", marginTop: 2 }}>
+                    <span>0.0 — lenient</span>
+                    <span>default: 0.50</span>
+                    <span>strict — 1.0</span>
+                  </div>
+                </div>
               </div>
             </div>
 
-            <button type="submit" disabled={submitting} style={{ width: "100%", border: "1px solid #D4DCC8", borderRadius: 12, padding: "12px 14px", fontSize: 15, fontWeight: 700, color: "#1A3028", background: "#FFFFFF", cursor: "pointer", marginBottom: 8 }}>
-              {submitting ? "Submitting..." : "Submit Review"}
+            {reviewStatus && (
+              <p style={{ margin: "0 0 10px", fontSize: 12, padding: "8px 12px", borderRadius: 6, background: reviewStatus.startsWith("⏳") ? "#EAF4EE" : reviewStatus.startsWith("Error") ? "#FDECEA" : "#EAF4EE", color: reviewStatus.startsWith("Error") ? "#C0392B" : "#2D6A4F", border: `1px solid ${reviewStatus.startsWith("Error") ? "#F5A7A5" : "#A8D8B8"}` }}>
+                {reviewStatus}
+              </p>
+            )}
+
+            <button type="submit" disabled={submitting || reviewProcessing} style={{ width: "100%", border: "1px solid #D4DCC8", borderRadius: 12, padding: "12px 14px", fontSize: 15, fontWeight: 700, color: "#1A3028", background: "#FFFFFF", cursor: submitting || reviewProcessing ? "default" : "pointer", marginBottom: 8, opacity: submitting || reviewProcessing ? 0.7 : 1 }}>
+              {submitting || reviewProcessing ? "Submitting…" : "Submit Review"}
             </button>
             <p style={{ margin: 0, fontSize: 12, color: "#687860", textAlign: "center" }}>Posting as {authUser?.username || "Guest"} ({authUser?.role || "guest"})</p>
-            {reviewStatus && (
-              <p style={{ margin: "8px 0 0", color: reviewStatus.toLowerCase().includes("success") ? "#2D6A4F" : "#C0392B", fontSize: 12 }}>{reviewStatus}</p>
-            )}
           </form>
         )}
 

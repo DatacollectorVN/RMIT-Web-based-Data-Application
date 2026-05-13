@@ -147,18 +147,20 @@ For each candidate product, the system queries who has reviewed it and computes:
 | `median_age` | `PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY age)` | Median age of buyers |
 | `top_location` | `MODE() WITHIN GROUP (ORDER BY location)` | Most frequent buyer location |
 | `top_job` | `MODE() WITHIN GROUP (ORDER BY job)` | Most frequent buyer job title |
+| `top_gender` | `MODE() WITHIN GROUP (ORDER BY gender)` | Most frequent buyer gender (`female` or `male`) |
 
-Only reviewers with all three fields populated (`age`, `location`, `job`) are included.
+Only reviewers with all four fields populated (`age`, `location`, `job`, `gender`) are included.
 
 ### Profile score
 
-The current user is compared against each product's typical buyer profile across three dimensions:
+The current user is compared against each product's typical buyer profile across four dimensions:
 
 | Dimension | Scoring logic | Weight |
 |-----------|--------------|--------|
 | **Age** | `max(0, 1 − |user.age − median_age| / 50)` — full score if same age, zero if 50+ years apart | Equal weight |
 | **Location** | `1.0` if exact match (case-insensitive), `0.0` otherwise | Equal weight |
 | **Job** | `1.0` if any word in user's job overlaps with top buyer job, `0.0` otherwise | Equal weight |
+| **Gender** | `1.0` if user's gender matches the most frequent buyer gender (high-frequency signal), `0.0` otherwise | Equal weight |
 
 The profile score is the average of whichever dimensions are available. If a product has no buyer data, a neutral score of `0.5` is used.
 

@@ -35,6 +35,7 @@ class _BuyerProfile:
     median_age: float | None
     top_location: str | None
     top_job: str | None
+    top_gender: str | None
 
 
 # ── DB helper: compute buyer demographics per product ─────────────────────────
@@ -44,11 +45,14 @@ async def _fetch_buyer_profiles(
     product_ids: list[int],
 ) -> dict[int, _BuyerProfile]:
     """
-    For each product_id query reviews JOIN users (filtering rows where
-    age, location, job are ALL non-null) and compute:
-      - PERCENTILE_CONT(0.5) → median buyer age
-      - MODE()               → most frequent buyer location
-      - MODE()               → most frequent buyer job
+    For each product_id query reviews JOIN users and compute:
+      - PERCENTILE_CONT(0.5) FILTER (WHERE age IS NOT NULL)      → median buyer age
+      - MODE()               FILTER (WHERE location IS NOT NULL) → most frequent buyer location
+      - MODE()               FILTER (WHERE job IS NOT NULL)      → most frequent buyer job
+      - MODE()               FILTER (WHERE gender IS NOT NULL)   → most frequent buyer gender
+
+    Each aggregate uses its own FILTER so it draws from the widest possible reviewer
+    pool independently — a reviewer missing one field still contributes to the others.
     """
     if not product_ids:
         return {}
@@ -58,21 +62,23 @@ async def _fetch_buyer_profiles(
             Review.product_id,
             func.percentile_cont(0.5)
                 .within_group(User.age.asc())
+                .filter(User.age.is_not(None))
                 .label("median_age"),
             func.mode()
                 .within_group(User.location.asc())
+                .filter(User.location.is_not(None))
                 .label("top_location"),
             func.mode()
                 .within_group(User.job.asc())
+                .filter(User.job.is_not(None))
                 .label("top_job"),
+            func.mode()
+                .within_group(User.gender.asc())
+                .filter(User.gender.is_not(None))
+                .label("top_gender"),
         )
         .join(User, User.id == Review.user_id)
-        .where(
-            Review.product_id.in_(product_ids),
-            User.age.is_not(None),
-            User.location.is_not(None),
-            User.job.is_not(None),
-        )
+        .where(Review.product_id.in_(product_ids))
         .group_by(Review.product_id)
     )
 
@@ -83,6 +89,7 @@ async def _fetch_buyer_profiles(
             median_age=float(row.median_age) if row.median_age is not None else None,
             top_location=row.top_location,
             top_job=row.top_job,
+            top_gender=row.top_gender,
         )
     return profiles
 
@@ -121,6 +128,10 @@ def _profile_score(user: User, profile: _BuyerProfile | None) -> float:
         u_words = set(user.job.lower().split())
         p_words = set(profile.top_job.lower().split())
         scores.append(1.0 if (u_words & p_words) else 0.0)
+
+    # Gender exact match — high-frequency signal derived from most common buyer gender
+    if user.gender and profile.top_gender:
+        scores.append(1.0 if user.gender.lower() == profile.top_gender.lower() else 0.0)
 
     return sum(scores) / len(scores) if scores else 0.5
 

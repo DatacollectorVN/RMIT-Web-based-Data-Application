@@ -60,4 +60,9 @@ export type Review = {
   author: string;
   source: string;
   created_at?: string;
+  updated_at?: string;
+  product_name?: string;
+  ai_label?: boolean | null;
+  final_label?: boolean | null;
+  status?: string;
 };

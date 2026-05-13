@@ -55,7 +55,7 @@ export default function NavBar({ authUser, onLogout }: Props) {
                   <p style={{ fontSize: 12, fontWeight: 600, color: "#1A3028", margin: 0 }}>{authUser.username}</p>
                   <div style={{ marginTop: 6 }}><RoleBadge role={role} /></div>
                 </div>
-                <DropdownItem label="My Orders" onClick={() => { setMenuOpen(false); navigate("/buyer"); }} />
+                <DropdownItem label="My Reviews" onClick={() => { setMenuOpen(false); navigate("/my-reviews"); }} />
                 {role === "admin" && (
                   <DropdownItem label="Dashboard" onClick={() => { setMenuOpen(false); navigate("/admin"); }} />
                 )}

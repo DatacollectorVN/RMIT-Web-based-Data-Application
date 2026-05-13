@@ -1,5 +1,10 @@
 import logging
 from contextlib import asynccontextmanager
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(levelname)-8s %(name)s — %(message)s",
+)
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -9,8 +14,11 @@ from fastapi.staticfiles import StaticFiles
 from opensearchpy import OpenSearch
 from sqlalchemy import text
 
+from ai.pipeline import get_pipeline
+from ai.semantic_pipeline import SemanticModel, get_semantic_model
 from config import OPENSEARCH_URL, PRODUCT_PHOTOS_DIR
 from database import engine
+from routers.ai import router as ai_router
 from routers.auth import router as auth_router
 from routers.dashboard import router as dashboard_router
 from routers.health import router as health_router
@@ -43,6 +51,19 @@ async def lifespan(app: FastAPI):
         logger.warning("OpenSearch client init failed: %s", exc)
         app.state.opensearch = None
 
+    try:
+        get_pipeline()
+        logger.info("AI pipeline loaded and ready")
+    except Exception as exc:
+        logger.warning("AI pipeline failed to load at startup: %s", exc)
+
+    for sem_model in SemanticModel:
+        try:
+            get_semantic_model(sem_model)
+            logger.info("Semantic model '%s' loaded and ready", sem_model.value)
+        except Exception as exc:
+            logger.warning("Semantic model '%s' failed to load at startup: %s", sem_model.value, exc)
+
     yield
 
     # Shutdown: dispose DB engine.
@@ -65,6 +86,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    application.include_router(ai_router, prefix="/api/v1")
     application.include_router(auth_router, prefix="/api/v1")
     application.include_router(dashboard_router, prefix="/api/v1")
     application.include_router(health_router, prefix="/api/v1")

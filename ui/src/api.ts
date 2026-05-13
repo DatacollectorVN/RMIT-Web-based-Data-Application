@@ -63,6 +63,10 @@ function mapReview(raw: RawReview): Review {
     author:         raw.user_name != null ? String(raw.user_name) : `User #${raw.user_id ?? "anon"}`,
     source:         "GlowShop",
     created_at:     raw.created_at != null ? String(raw.created_at) : undefined,
+    updated_at:     raw.updated_at != null ? String(raw.updated_at) : undefined,
+    ai_label:       raw.ai_label    as boolean | null | undefined,
+    final_label:    raw.final_label as boolean | null | undefined,
+    status:         raw.status != null ? String(raw.status) : undefined,
   };
 }
 
@@ -178,6 +182,22 @@ export async function fetchProductReviews(productId: string, limit = 5): Promise
   return (json.data?.items ?? []).map(mapReview);
 }
 
+export async function fetchUserReviews(
+  userId: number,
+  page = 1,
+  limit = 20,
+): Promise<{ items: Review[]; total: number; total_pages: number }> {
+  const params = new URLSearchParams({ user_id: String(userId), page: String(page), limit: String(limit) });
+  const res = await fetch(`/api/v1/reviews/?${params}`);
+  if (!res.ok) return { items: [], total: 0, total_pages: 1 };
+  const json = await res.json() as { data: { items: RawReview[]; total: number; total_pages: number } };
+  return {
+    items:       (json.data?.items ?? []).map(mapReview),
+    total:       json.data?.total ?? 0,
+    total_pages: json.data?.total_pages ?? 1,
+  };
+}
+
 export async function searchProducts(q: string): Promise<{ items: Product[]; total: number }> {
   const res = await fetch(`/api/v1/products/search?q=${encodeURIComponent(q)}&limit=24`);
   if (!res.ok) throw new Error("Search failed");
@@ -215,13 +235,13 @@ export async function login(email: string, password: string): Promise<AuthUser> 
 export async function createReview(
   productId: string,
   payload: ReviewInput,
-  _token?: string
-): Promise<unknown> {
+  userId: number,
+): Promise<{ id: number }> {
   const res = await fetch("/api/v1/reviews/", {
     method:  "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      user_id:    1,
+      user_id:    userId,
       product_id: parseInt(productId, 10),
       title:      payload.title || "Review",
       content:    payload.body,
@@ -234,7 +254,70 @@ export async function createReview(
   }
   // Invalidate product cache so review counts refresh on next fetch
   _cache = null;
-  return res.json();
+  const json = await res.json() as { data: { id: number } };
+  return { id: json.data?.id };
+}
+
+export async function updateReview(
+  reviewId: string,
+  payload: { title?: string; content?: string; rating?: number },
+): Promise<void> {
+  const res = await fetch(`/api/v1/reviews/${reviewId}`, {
+    method:  "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body:    JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error("Failed to update review");
+}
+
+export async function humanConfirm(reviewId: string, humanLabel: boolean): Promise<void> {
+  const params = new URLSearchParams({ review_id: reviewId, human_label: String(humanLabel) });
+  const res = await fetch(`/api/v1/ai/human-confirm?${params}`, { method: "POST" });
+  if (!res.ok) throw new Error("Failed to confirm label");
+}
+
+// ----- AI prediction triggers (fire-and-forget) -----
+interface AiBody { review_title: string; review_text: string; review_rating?: number }
+
+export async function triggerCountingPredict(
+  reviewId: number,
+  productId: string,
+  userId?: number,
+  threshold?: number,
+  body?: AiBody,
+): Promise<void> {
+  const params = new URLSearchParams({ review_id: String(reviewId), product_id: productId });
+  if (userId) params.set("user_id", String(userId));
+  if (threshold !== undefined) params.set("threshold", String(threshold));
+  await fetch(`/api/v1/ai/counting-predict?${params}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body ?? { review_title: "", review_text: "" }),
+  }).catch(() => {});
+}
+
+// Maps UI variant names to backend SemanticModel enum values
+const SEMANTIC_MODEL_MAP = {
+  nli:    "nli-deberta-v3-small",
+  miniLM: "minilm",
+} as const;
+
+export async function triggerSemanticPredict(
+  reviewId: number,
+  productId: string,
+  model: "nli" | "miniLM",
+  userId?: number,
+  threshold?: number,
+  body?: AiBody,
+): Promise<void> {
+  const params = new URLSearchParams({ review_id: String(reviewId), product_id: productId, model: SEMANTIC_MODEL_MAP[model] });
+  if (userId) params.set("user_id", String(userId));
+  if (threshold !== undefined) params.set("threshold", String(threshold));
+  await fetch(`/api/v1/ai/semantic-predict?${params}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body ?? { review_title: "", review_text: "" }),
+  }).catch(() => {});
 }
 
 // ----- Cart / Checkout (no backend endpoints — simulate locally) -----

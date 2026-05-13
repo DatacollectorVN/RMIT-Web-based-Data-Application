@@ -52,3 +52,4 @@ data/product-photos/**
 
 archive/
 **/node_modules
+app/ai/model/rf_pipeline.pkl

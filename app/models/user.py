@@ -17,5 +17,6 @@ class User(Base):
     location: Mapped[str | None] = mapped_column(String(255), nullable=True)
     age: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
     job: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    gender: Mapped[str | None] = mapped_column(String(10), nullable=True)
     created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
