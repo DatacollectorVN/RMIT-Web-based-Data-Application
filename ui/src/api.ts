@@ -239,6 +239,27 @@ export async function login(email: string, password: string): Promise<AuthUser> 
   };
 }
 
+// ----- Register -----
+export async function register(payload: {
+  email: string;
+  password: string;
+  full_name: string;
+  location?: string;
+  age?: number;
+  job?: string;
+  gender?: string;
+}): Promise<void> {
+  const res = await fetch("/api/v1/users/", {
+    method:  "POST",
+    headers: { "Content-Type": "application/json" },
+    body:    JSON.stringify({ ...payload, role: "buyer" }),
+  });
+  if (!res.ok) {
+    const json = await res.json().catch(() => ({})) as { detail?: string };
+    throw new Error(json.detail ?? "Registration failed");
+  }
+}
+
 // ----- Reviews -----
 export async function createReview(
   productId: string,

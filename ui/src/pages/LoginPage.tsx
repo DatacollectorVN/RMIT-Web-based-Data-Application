@@ -1,5 +1,5 @@
 import { FormEvent, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import type { AuthUser } from "../types";
 
 type Props = {
@@ -70,10 +70,13 @@ export default function LoginPage({ onLogin }: Props) {
 
         {error && <p style={styles.error}>{error}</p>}
 
+        <p style={{ textAlign: "center", marginTop: 16, fontSize: 13, color: "#687860" }}>
+          Don't have an account?{" "}
+          <Link to="/register" style={{ color: "#3A7D52", fontWeight: 600, textDecoration: "none" }}>Create one</Link>
+        </p>
+
         <p style={styles.hint}>
-          Demo accounts — all share the same password set during seed:
-          <br />
-          <code>alice@example.com</code> (buyer) · <code>bob@example.com</code> (seller)
+          Demo accounts: <code>alice@example.com</code> · <code>david@example.com</code> (admin)
         </p>
       </div>
     </section>

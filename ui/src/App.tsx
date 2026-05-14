@@ -6,6 +6,7 @@ import NavBar from "./components/NavBar";
 import ProductDetailPage from "./components/ProductDetailPage";
 import CheckoutPage from "./components/CheckoutPage";
 import LoginPage from "./pages/LoginPage";
+import RegisterPage from "./pages/RegisterPage";
 import BuyerPage from "./pages/BuyerPage";
 import DashboardPage from "./pages/DashboardPage";
 import MyReviewsPage from "./pages/MyReviewsPage";
@@ -31,6 +32,7 @@ export default function App() {
           <Route path="/product/:productId" element={<ProductDetailPage authUser={authUser} />} />
           <Route path="/checkout" element={<CheckoutPage authUser={authUser} />} />
           <Route path="/login"    element={<LoginPage onLogin={login} />} />
+          <Route path="/register" element={<RegisterPage onLogin={login} />} />
 
           {/* Protected: my reviews */}
           <Route
