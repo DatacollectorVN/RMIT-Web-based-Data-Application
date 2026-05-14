@@ -74,15 +74,29 @@ def _score_nli(combined: str) -> float:
 
 _MINILM_MODEL_ID = "all-MiniLM-L6-v2"
 
+# Anchors are written in first-person review style — not as definitions —
+# so their embeddings sit close to real reviews in the MiniLM vector space.
+#
+# Genuine anchor: rich sensory detail, personal timeline, specific skin/hair
+# outcome, honest mixed feedback → typical of someone who actually used it.
+#
+# Fake anchor: no personal experience, no product specifics, vague praise or
+# generic complaint, filler phrases → typical of incentivised or bot reviews.
+
 _GENUINE_ANCHOR = (
-    "A genuine verified buyer review from a real customer who personally "
-    "purchased and used the beauty or cosmetic product and shares honest "
-    "first-hand experience about its quality, scent, texture, and results."
+    "I have been using this for about three weeks and I can already see a "
+    "difference. The texture is lightweight and absorbs quickly without leaving "
+    "a greasy residue. The scent is subtle and fades after a few minutes, which "
+    "I appreciate. My skin feels noticeably softer and the redness around my "
+    "cheeks has calmed down. It did break me out slightly in the first few days "
+    "but that settled. Would definitely repurchase."
 )
+
 _FAKE_ANCHOR = (
-    "A fake, sponsored, or non-buyer review written by someone who did not "
-    "actually purchase or try the beauty product, containing vague, generic, "
-    "or suspiciously promotional language."
+    "Amazing product! Highly recommend to everyone. Great quality and fast "
+    "shipping. Five stars all the way. This is the best product I have ever "
+    "bought. Perfect in every way. You will not regret buying this. Love it "
+    "so much. Will buy again. Excellent seller."
 )
 
 _minilm_model: SentenceTransformer | None = None

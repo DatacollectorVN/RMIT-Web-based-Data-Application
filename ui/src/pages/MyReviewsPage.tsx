@@ -188,14 +188,14 @@ function ReviewCard({ review, authUser, onRefresh }: { review: Review; authUser:
 
       {/* ── Human confirm buttons ── */}
       <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-        <span style={{ fontSize: 11, fontWeight: 700, color: "#687860", alignSelf: "center", letterSpacing: "0.5px" }}>HUMAN LABEL:</span>
+        <span style={{ fontSize: 11, fontWeight: 700, color: "#687860", alignSelf: "center", letterSpacing: "0.5px" }}>Verification:</span>
         <button type="button" disabled={saving} onClick={() => void onHumanConfirm(true)}
           style={{ ...s.confirmBtn, background: "#EAF4EE", color: "#2D6A4F", border: "1px solid #A8D8B8" }}>
-          ✓ Verified Buyer
+          ✓ Confirm Buyer
         </button>
         <button type="button" disabled={saving} onClick={() => void onHumanConfirm(false)}
           style={{ ...s.confirmBtn, background: "#FDECEA", color: "#C0392B", border: "1px solid #F5A7A5" }}>
-          ✗ Non-Buyer
+          ✗ Flag As Non Buyer
         </button>
       </div>
 

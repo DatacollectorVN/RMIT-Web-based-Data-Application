@@ -46,8 +46,8 @@ build/
 *.egg-info/
 
 # Product photo uploads (keep tree + docs in git)
-!data/product-photos/.gitkeep
-!data/product-photos/README.md
+# !data/product-photos/.gitkeep
+# !data/product-photos/README.md
 
 archive/
 **/node_modules
