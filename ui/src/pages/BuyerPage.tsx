@@ -4,7 +4,7 @@ import ProductCard from "../components/ProductCard";
 import { fetchBrands, fetchProductsPage, searchProducts } from "../api";
 import type { AuthUser, Product } from "../types";
 
-const PAGE_LIMIT = 100;
+const PAGE_LIMIT = 50;
 
 type Props = {
   authUser: AuthUser | null;

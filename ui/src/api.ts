@@ -173,13 +173,21 @@ export async function fetchSimilarProducts(
   }
 }
 
-export async function fetchProductReviews(productId: string, limit = 5): Promise<Review[]> {
+export async function fetchProductReviews(
+  productId: string,
+  limit = 10,
+  page = 1,
+): Promise<{ items: Review[]; total: number; total_pages: number }> {
   const res = await fetch(
-    `/api/v1/reviews/?product_id=${encodeURIComponent(productId)}&limit=${limit}&page=1`
+    `/api/v1/reviews/?product_id=${encodeURIComponent(productId)}&limit=${limit}&page=${page}`
   );
-  if (!res.ok) return [];
-  const json = await res.json() as { data: { items: RawReview[] } };
-  return (json.data?.items ?? []).map(mapReview);
+  if (!res.ok) return { items: [], total: 0, total_pages: 1 };
+  const json = await res.json() as { data: { items: RawReview[]; total: number; total_pages: number } };
+  return {
+    items:       (json.data?.items ?? []).map(mapReview),
+    total:       json.data?.total ?? 0,
+    total_pages: json.data?.total_pages ?? 1,
+  };
 }
 
 export async function fetchUserReviews(

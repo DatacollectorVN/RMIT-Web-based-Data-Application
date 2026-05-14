@@ -8,6 +8,29 @@ type Props = {
   authUser: AuthUser | null;
 };
 
+function buildReviewPageNumbers(current: number, total: number): (number | "…")[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const pages: (number | "…")[] = [1];
+  if (current > 3) pages.push("…");
+  for (let p = Math.max(2, current - 1); p <= Math.min(total - 1, current + 1); p++) pages.push(p);
+  if (current < total - 2) pages.push("…");
+  pages.push(total);
+  return pages;
+}
+
+function ReviewPagBtn({ label, onClick, disabled, active }: { label: string; onClick: () => void; disabled: boolean; active?: boolean }) {
+  return (
+    <button type="button" onClick={onClick} disabled={disabled}
+      style={{ border: `1.5px solid ${active ? "#1A3028" : "#D4DCC8"}`,
+        background: active ? "#1A3028" : "#FFFFFF",
+        color: active ? "#FFFFFF" : disabled ? "#BBBBBB" : "#1A3028",
+        fontSize: 11, fontWeight: 600, padding: "6px 12px", borderRadius: 4,
+        cursor: disabled ? "default" : "pointer", minWidth: 32 }}>
+      {label}
+    </button>
+  );
+}
+
 function formatCategory(raw: string | null | undefined): string {
   if (!raw) return "";
   return raw.split(/[\s_-]+/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
@@ -19,6 +42,9 @@ export default function ProductDetailPage({ authUser }: Props) {
   const [product, setProduct]               = useState<Product | null>(null);
   const [similarProducts, setSimilar]       = useState<Array<Product & { similarity: number }>>([]);
   const [reviews, setReviews]               = useState<Review[]>([]);
+  const [reviewPage, setReviewPage]         = useState(1);
+  const [reviewTotalPages, setReviewTotalPages] = useState(1);
+  const [reviewTotal, setReviewTotal]       = useState(0);
   const [loading, setLoading]               = useState(true);
   const [error, setError]                   = useState<string | null>(null);
   const [showReviewForm, setShowReviewForm] = useState(false);
@@ -47,16 +73,26 @@ export default function ProductDetailPage({ authUser }: Props) {
     Promise.all([
       fetchProductById(productId),
       fetchSimilarProducts(productId, 4, authUser?.id ? String(authUser.id) : null).catch(() => []),
-      fetchProductReviews(productId, 20).catch(() => [])
+      fetchProductReviews(productId, 10, 1).catch(() => ({ items: [], total: 0, total_pages: 1 })),
     ])
       .then(([p, sim, rev]) => {
         setProduct(p);
         setSimilar(sim);
-        setReviews(rev);
+        setReviews(rev.items);
+        setReviewTotal(rev.total);
+        setReviewTotalPages(rev.total_pages);
+        setReviewPage(1);
       })
       .catch(() => setError("Failed to load this product."))
       .finally(() => setLoading(false));
   }, [productId, authUser?.id]);
+
+  useEffect(() => {
+    if (!productId || reviewPage === 1) return;
+    fetchProductReviews(productId, 10, reviewPage)
+      .then(rev => { setReviews(rev.items); setReviewTotal(rev.total); setReviewTotalPages(rev.total_pages); })
+      .catch(() => {});
+  }, [productId, reviewPage]);
 
   if (loading) {
     return <div style={{ maxWidth: 1100, margin: "0 auto", padding: "28px", color: "#687860" }}>Loading product...</div>;
@@ -77,12 +113,7 @@ export default function ProductDetailPage({ authUser }: Props) {
     ? reviews.reduce((acc, r) => acc + r.review_rating, 0) / reviews.length
     : 0;
   const roundedRating = Math.max(0, Math.min(5, Math.round(avgRating)));
-  // BUG 8: use actual fetched review count
-  const reviewCount   = reviews.length;
-  // BUG 10: compute verified buyer % from actual review data
-  const verifiedBuyerPct = reviews.length > 0
-    ? Math.round(reviews.filter(r => r.is_a_buyer === 1).length / reviews.length * 100)
-    : null;
+  const reviewCount = reviewTotal;
 
   const galleryTiles = [
     { id: "main",    bg: product.brand_bg || "#E8EDD8", src: imageUrl, emoji: product.brand_emoji || "💄" },
@@ -124,8 +155,11 @@ export default function ProductDetailPage({ authUser }: Props) {
       }
       setReviewProcessing(false);
 
-      const latest = await fetchProductReviews(product.product_id, 20);
-      setReviews(latest);
+      const latest = await fetchProductReviews(product.product_id, 10, 1);
+      setReviews(latest.items);
+      setReviewTotal(latest.total);
+      setReviewTotalPages(latest.total_pages);
+      setReviewPage(1);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to submit review.";
       setReviewStatus(msg.includes("401") ? "Please login to submit a review." : `Error: ${msg}`);
@@ -373,6 +407,26 @@ export default function ProductDetailPage({ authUser }: Props) {
               </div>
             );
           })
+        )}
+
+        {/* Review pagination */}
+        {reviewTotalPages > 1 && (
+          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 6, marginTop: 16, flexWrap: "wrap" }}>
+            <ReviewPagBtn label="←" disabled={reviewPage <= 1} onClick={() => setReviewPage(p => p - 1)} />
+            {buildReviewPageNumbers(reviewPage, reviewTotalPages).map((p, i) =>
+              p === "…" ? (
+                <span key={`e-${i}`} style={{ padding: "0 4px", color: "#687860", fontSize: 12 }}>…</span>
+              ) : (
+                <ReviewPagBtn key={p} label={String(p)} disabled={p === reviewPage} active={p === reviewPage} onClick={() => setReviewPage(Number(p))} />
+              )
+            )}
+            <ReviewPagBtn label="→" disabled={reviewPage >= reviewTotalPages} onClick={() => setReviewPage(p => p + 1)} />
+          </div>
+        )}
+        {reviewTotalPages > 1 && (
+          <p style={{ textAlign: "center", fontSize: 11, color: "#687860", marginTop: 8 }}>
+            Page {reviewPage} of {reviewTotalPages} · {reviewTotal} reviews
+          </p>
         )}
       </div>
 

@@ -19,7 +19,7 @@ export default function MyReviewsPage({ authUser }: Props) {
   const reload = () => {
     if (!authUser?.id) return;
     setLoading(true);
-    fetchUserReviews(authUser.id, page, 20)
+    fetchUserReviews(authUser.id, page, 10)
       .then(data => { setReviews(data.items); setTotal(data.total); setTotalPages(data.total_pages); })
       .finally(() => setLoading(false));
   };
@@ -71,9 +71,16 @@ export default function MyReviewsPage({ authUser }: Props) {
             </div>
 
             {totalPages > 1 && (
-              <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 24 }}>
-                <PagBtn label="← Prev" disabled={page <= 1}          onClick={() => setPage(p => p - 1)} />
-                <PagBtn label="Next →" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} />
+              <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 6, marginTop: 24, flexWrap: "wrap" }}>
+                <PagBtn label="←" disabled={page <= 1} onClick={() => setPage(p => p - 1)} />
+                {buildPageNumbers(page, totalPages).map((p, i) =>
+                  p === "…" ? (
+                    <span key={`ellipsis-${i}`} style={{ padding: "0 4px", color: "#687860", fontSize: 12 }}>…</span>
+                  ) : (
+                    <PagBtn key={p} label={String(p)} disabled={p === page} active={p === page} onClick={() => setPage(Number(p))} />
+                  )
+                )}
+                <PagBtn label="→" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} />
               </div>
             )}
           </>
@@ -299,11 +306,24 @@ function Badge({ label, green, prefix }: { label: string; green: boolean; prefix
   );
 }
 
-function PagBtn({ label, onClick, disabled }: { label: string; onClick: () => void; disabled: boolean }) {
+function buildPageNumbers(current: number, total: number): (number | "…")[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const pages: (number | "…")[] = [1];
+  if (current > 3) pages.push("…");
+  for (let p = Math.max(2, current - 1); p <= Math.min(total - 1, current + 1); p++) pages.push(p);
+  if (current < total - 2) pages.push("…");
+  pages.push(total);
+  return pages;
+}
+
+function PagBtn({ label, onClick, disabled, active }: { label: string; onClick: () => void; disabled: boolean; active?: boolean }) {
   return (
     <button type="button" onClick={onClick} disabled={disabled}
-      style={{ border: "1.5px solid #D4DCC8", background: "#FFFFFF", color: disabled ? "#BBBBBB" : "#1A3028",
-        fontSize: 11, fontWeight: 600, padding: "7px 16px", borderRadius: 4, cursor: disabled ? "default" : "pointer" }}>
+      style={{ border: `1.5px solid ${active ? "#1A3028" : "#D4DCC8"}`,
+        background: active ? "#1A3028" : "#FFFFFF",
+        color: active ? "#FFFFFF" : disabled ? "#BBBBBB" : "#1A3028",
+        fontSize: 11, fontWeight: 600, padding: "7px 13px", borderRadius: 4,
+        cursor: disabled ? "default" : "pointer", minWidth: 34 }}>
       {label}
     </button>
   );
