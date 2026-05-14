@@ -3,6 +3,9 @@ from datetime import datetime
 from pydantic import BaseModel, EmailStr, field_validator
 
 
+_ALLOWED_GENDERS = {"male", "female"}
+
+
 class UserCreate(BaseModel):
     email: EmailStr
     password: str
@@ -11,6 +14,7 @@ class UserCreate(BaseModel):
     location: str | None = None
     age: int | None = None
     job: str | None = None
+    gender: str | None = None
 
     @field_validator("role")
     @classmethod
@@ -18,6 +22,13 @@ class UserCreate(BaseModel):
         allowed = {"buyer", "admin"}
         if v not in allowed:
             raise ValueError(f"role must be one of {allowed}")
+        return v
+
+    @field_validator("gender")
+    @classmethod
+    def validate_gender(cls, v: str | None) -> str | None:
+        if v is not None and v not in _ALLOWED_GENDERS:
+            raise ValueError(f"gender must be one of {_ALLOWED_GENDERS}")
         return v
 
 
@@ -29,6 +40,7 @@ class UserUpdate(BaseModel):
     location: str | None = None
     age: int | None = None
     job: str | None = None
+    gender: str | None = None
 
     @field_validator("role")
     @classmethod
@@ -40,6 +52,13 @@ class UserUpdate(BaseModel):
             raise ValueError(f"role must be one of {allowed}")
         return v
 
+    @field_validator("gender")
+    @classmethod
+    def validate_gender(cls, v: str | None) -> str | None:
+        if v is not None and v not in _ALLOWED_GENDERS:
+            raise ValueError(f"gender must be one of {_ALLOWED_GENDERS}")
+        return v
+
 
 class UserResponse(BaseModel):
     id: int
@@ -49,6 +68,7 @@ class UserResponse(BaseModel):
     location: str | None = None
     age: int | None = None
     job: str | None = None
+    gender: str | None = None
     created_at: datetime
     updated_at: datetime
 
