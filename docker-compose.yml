@@ -70,7 +70,6 @@ services:
       start_period: 300s
       interval: 15s
       timeout: 10s
-retries: 10
 
   ui:
     build:
