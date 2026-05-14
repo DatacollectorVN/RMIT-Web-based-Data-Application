@@ -32,20 +32,48 @@ DATABASE_URL: str = os.environ.get("DATABASE_URL", "")
 SCRIPT_DIR  = Path(__file__).parent
 SEED_FILE   = SCRIPT_DIR / "snapshot_seed.sql"
 REPO_ROOT   = Path(__file__).resolve().parent.parent.parent
-DEFAULT_PRODUCT_PHOTO = REPO_ROOT / "data" / "default-photos" / "blackpink.jpg"
-PRODUCT_PHOTOS_DEST   = REPO_ROOT / "data" / "product-photos" / "products"
+DEFAULT_PRODUCT_PHOTO  = REPO_ROOT / "data" / "default-photos" / "blackpink.jpg"
+PRODUCT_PHOTOS_DEST    = REPO_ROOT / "data" / "product-photos" / "products"
+ARCHIVE_PHOTOS_SRC     = REPO_ROOT / "archive" / "media" / "media" / "products"
 # 295 products from CSV (sorted by brand A→Z then avg_rating desc)
 SEEDED_PRODUCT_IDS = range(1, 296)
 
 
-def prepare_default_product_photos() -> None:
-    if not DEFAULT_PRODUCT_PHOTO.is_file():
-        print(f"error: default seed photo not found: {DEFAULT_PRODUCT_PHOTO}")
+def prepare_product_photos() -> None:
+    """Copy actual product photos from the archive into data/product-photos/products/.
+
+    Archive layout:  archive/media/media/products/{n}/{n}.jpg  (IDs 1-295)
+    Destination:     data/product-photos/products/{n}/{n}.jpg
+
+    Falls back to the default placeholder photo if the archive image is missing.
+    """
+    has_archive = ARCHIVE_PHOTOS_SRC.is_dir()
+    has_default = DEFAULT_PRODUCT_PHOTO.is_file()
+
+    if not has_archive:
+        print(f"warning: archive photos not found at {ARCHIVE_PHOTOS_SRC}")
+    if not has_archive and not has_default:
+        print(f"error: neither archive photos nor default photo found")
         sys.exit(1)
+
+    copied = 0
+    fallback = 0
     for n in SEEDED_PRODUCT_IDS:
         dest_dir = PRODUCT_PHOTOS_DEST / str(n)
         dest_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(DEFAULT_PRODUCT_PHOTO, dest_dir / f"{n}.jpg")
+        dest = dest_dir / f"{n}.jpg"
+
+        src = ARCHIVE_PHOTOS_SRC / str(n) / f"{n}.jpg"
+        if src.is_file():
+            shutil.copy2(src, dest)
+            copied += 1
+        elif has_default:
+            shutil.copy2(DEFAULT_PRODUCT_PHOTO, dest)
+            fallback += 1
+        else:
+            print(f"warning: no photo for product {n}, skipping")
+
+    print(f"snapshotdb: photos — {copied} from archive, {fallback} placeholder fallbacks")
 
 
 def _pg_dsn(url: str) -> str:
@@ -97,7 +125,7 @@ def main() -> None:
 
     sql = SEED_FILE.read_text(encoding="utf-8")
 
-    prepare_default_product_photos()
+    prepare_product_photos()
 
     try:
         conn = psycopg2.connect(_pg_dsn(DATABASE_URL))
