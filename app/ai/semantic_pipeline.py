@@ -69,33 +69,30 @@ def _score_nli(combined: str) -> float:
 
 
 # ---------------------------------------------------------------------------
-# MiniLM — cosine similarity to length-matched anchor embeddings
+# MiniLM — cosine similarity to a single length-matched positive anchor
 # ---------------------------------------------------------------------------
 #
-# Problem: cosine similarity is sensitive to vocabulary density.  A 10-word
-# review compared to a 100-word anchor loses similarity just from length
-# mismatch, not meaning.  Fixing this: maintain four anchor pairs (genuine /
-# fake) calibrated to four review-length buckets, then pick the pair whose
-# length is closest to the incoming review.
+# Approach: one positive (genuine buyer) anchor per length bucket.
+# Compute cosine similarity between the review and the matching anchor,
+# then normalise from [-1, 1] → [0, 1] via  (sim + 1) / 2.
 #
-# Bucket thresholds (characters in the combined "Rating: X/5. title. body"):
+# Higher score  →  review is more similar to a real buyer review  →  buyer (1)
+# Lower score   →  review is less similar to a real buyer review  →  not buyer (0)
+#
+# Bucket thresholds (characters in "Rating: X/5. title. body"):
 #   tiny   < 80      e.g. "Loved it."
 #   short  80–250    e.g. one or two sentences
 #   medium 250–600   e.g. a short paragraph
 #   long   > 600     e.g. detailed multi-paragraph review
-#
-# All genuine anchors describe a real buyer (bought → 1).
-# All fake anchors describe a non-buyer/bot review (not bought → 0).
 
 _MINILM_MODEL_ID = "all-MiniLM-L6-v2"
 
-# (threshold_chars, genuine_anchor, fake_anchor)
-_ANCHOR_TIERS: list[tuple[int, str, str]] = [
+# (threshold_chars, positive_anchor)
+_POSITIVE_ANCHORS: list[tuple[int, str]] = [
     # ── TINY  (< 80 chars) ──────────────────────────────────────────────────
     (
         80,
         "Bought it. Works great on my skin.",
-        "Amazing! Best ever. Five stars.",
     ),
     # ── SHORT  (80 – 250 chars) ─────────────────────────────────────────────
     (
@@ -104,10 +101,6 @@ _ANCHOR_TIERS: list[tuple[int, str, str]] = [
             "I picked this up last week and have been using it every night. "
             "My skin feels softer already and the scent is really pleasant. "
             "Will definitely buy again."
-        ),
-        (
-            "Great product! Highly recommend. Fast shipping. Love it so much. "
-            "Perfect for everyone. Five stars. Best purchase ever."
         ),
     ),
     # ── MEDIUM  (250 – 600 chars) ────────────────────────────────────────────
@@ -121,14 +114,6 @@ _ANCHOR_TIERS: list[tuple[int, str, str]] = [
             "my cheeks. The packaging is sturdy and hygienic. It did sting "
             "slightly the first time but that went away after day two. Would "
             "recommend for sensitive skin types and will repurchase."
-        ),
-        (
-            "Absolutely love this product! It is amazing and I recommend it to "
-            "all my friends and family. The quality is outstanding and the price "
-            "is great. Shipping was super fast and the packaging was beautiful. "
-            "This is the best beauty product I have ever used in my life. "
-            "Everyone should buy this. Cannot imagine my routine without it now. "
-            "Will definitely order again and again. Seller is fantastic."
         ),
     ),
     # ── LONG  (> 600 chars) ─────────────────────────────────────────────────
@@ -150,27 +135,11 @@ _ANCHOR_TIERS: list[tuple[int, str, str]] = [
             "I would rate this as one of the better serums I have tried at "
             "this price point and will continue buying it."
         ),
-        (
-            "This product is absolutely incredible and I cannot believe how "
-            "good it is. From the moment I opened the package I knew this was "
-            "going to be special. The quality is unmatched and the results "
-            "speak for themselves. I have told everyone I know about this "
-            "product and they all agree it is the best thing they have ever "
-            "tried. The company clearly cares about its customers and the "
-            "customer service was outstanding when I reached out with a "
-            "question. Shipping was lightning fast and the packaging was "
-            "elegant and premium. I will be ordering multiple bottles to give "
-            "as gifts because everyone deserves to experience this. I cannot "
-            "recommend it highly enough. Five stars is not enough. This "
-            "product has changed my life and I will never use anything else. "
-            "Buy it now, you will not regret it. Amazing, perfect, wonderful."
-        ),
     ),
 ]
 
 _minilm_model: SentenceTransformer | None = None
-# Pre-encoded anchor tensors: list of (genuine_emb, fake_emb) per tier
-_minilm_anchor_embs: list[tuple[torch.Tensor, torch.Tensor]] = []
+_minilm_anchor_embs: list[torch.Tensor] = []
 
 
 def _get_minilm():
@@ -179,32 +148,29 @@ def _get_minilm():
         logger.info("ai.semantic_pipeline: loading MiniLM model '%s' …", _MINILM_MODEL_ID)
         _minilm_model = SentenceTransformer(_MINILM_MODEL_ID)
         _minilm_anchor_embs = [
-            (
-                _minilm_model.encode(genuine, convert_to_tensor=True),
-                _minilm_model.encode(fake,    convert_to_tensor=True),
-            )
-            for _, genuine, fake in _ANCHOR_TIERS
+            _minilm_model.encode(anchor, convert_to_tensor=True)
+            for _, anchor in _POSITIVE_ANCHORS
         ]
-        logger.info("ai.semantic_pipeline: MiniLM model ready (%d anchor tiers).", len(_ANCHOR_TIERS))
+        logger.info("ai.semantic_pipeline: MiniLM model ready (%d anchor tiers).", len(_POSITIVE_ANCHORS))
     return _minilm_model
 
 
-def _pick_anchor_tier(combined: str) -> tuple[torch.Tensor, torch.Tensor]:
-    """Return the (genuine_emb, fake_emb) pair whose length bucket matches the review."""
+def _pick_anchor(combined: str) -> torch.Tensor:
+    """Return the pre-encoded positive anchor whose length tier matches the review."""
     n = len(combined)
-    for i, (threshold, _, _) in enumerate(_ANCHOR_TIERS):
+    for i, (threshold, _) in enumerate(_POSITIVE_ANCHORS):
         if n < threshold:
             return _minilm_anchor_embs[i]
     return _minilm_anchor_embs[-1]
 
 
 def _score_minilm(combined: str) -> float:
+    """Cosine similarity vs the matching positive anchor, normalised to [0, 1]."""
     _get_minilm()
-    genuine_emb, fake_emb = _pick_anchor_tier(combined)
-    emb   = _minilm_model.encode(combined, convert_to_tensor=True)  # type: ignore[union-attr]
-    sims  = st_util.cos_sim(emb, torch.stack([genuine_emb, fake_emb]))[0]
-    probs = torch.softmax(sims, dim=0)
-    return round(probs[0].item(), 4)
+    anchor_emb = _pick_anchor(combined)
+    review_emb = _minilm_model.encode(combined, convert_to_tensor=True)  # type: ignore[union-attr]
+    sim = st_util.cos_sim(review_emb, anchor_emb).item() # return -1 to 1
+    return round((sim + 1) / 2, 4)  # convert -1 to 1 to 0 to 1
 
 
 # ---------------------------------------------------------------------------
