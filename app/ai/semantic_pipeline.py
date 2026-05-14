@@ -69,56 +69,140 @@ def _score_nli(combined: str) -> float:
 
 
 # ---------------------------------------------------------------------------
-# MiniLM — cosine similarity to anchor embeddings
+# MiniLM — cosine similarity to length-matched anchor embeddings
 # ---------------------------------------------------------------------------
+#
+# Problem: cosine similarity is sensitive to vocabulary density.  A 10-word
+# review compared to a 100-word anchor loses similarity just from length
+# mismatch, not meaning.  Fixing this: maintain four anchor pairs (genuine /
+# fake) calibrated to four review-length buckets, then pick the pair whose
+# length is closest to the incoming review.
+#
+# Bucket thresholds (characters in the combined "Rating: X/5. title. body"):
+#   tiny   < 80      e.g. "Loved it."
+#   short  80–250    e.g. one or two sentences
+#   medium 250–600   e.g. a short paragraph
+#   long   > 600     e.g. detailed multi-paragraph review
+#
+# All genuine anchors describe a real buyer (bought → 1).
+# All fake anchors describe a non-buyer/bot review (not bought → 0).
 
 _MINILM_MODEL_ID = "all-MiniLM-L6-v2"
 
-# Anchors are written in first-person review style — not as definitions —
-# so their embeddings sit close to real reviews in the MiniLM vector space.
-#
-# Genuine anchor: rich sensory detail, personal timeline, specific skin/hair
-# outcome, honest mixed feedback → typical of someone who actually used it.
-#
-# Fake anchor: no personal experience, no product specifics, vague praise or
-# generic complaint, filler phrases → typical of incentivised or bot reviews.
-
-_GENUINE_ANCHOR = (
-    "I have been using this for about three weeks and I can already see a "
-    "difference. The texture is lightweight and absorbs quickly without leaving "
-    "a greasy residue. The scent is subtle and fades after a few minutes, which "
-    "I appreciate. My skin feels noticeably softer and the redness around my "
-    "cheeks has calmed down. It did break me out slightly in the first few days "
-    "but that settled. Would definitely repurchase."
-)
-
-_FAKE_ANCHOR = (
-    "Amazing product! Highly recommend to everyone. Great quality and fast "
-    "shipping. Five stars all the way. This is the best product I have ever "
-    "bought. Perfect in every way. You will not regret buying this. Love it "
-    "so much. Will buy again. Excellent seller."
-)
+# (threshold_chars, genuine_anchor, fake_anchor)
+_ANCHOR_TIERS: list[tuple[int, str, str]] = [
+    # ── TINY  (< 80 chars) ──────────────────────────────────────────────────
+    (
+        80,
+        "Bought it. Works great on my skin.",
+        "Amazing! Best ever. Five stars.",
+    ),
+    # ── SHORT  (80 – 250 chars) ─────────────────────────────────────────────
+    (
+        250,
+        (
+            "I picked this up last week and have been using it every night. "
+            "My skin feels softer already and the scent is really pleasant. "
+            "Will definitely buy again."
+        ),
+        (
+            "Great product! Highly recommend. Fast shipping. Love it so much. "
+            "Perfect for everyone. Five stars. Best purchase ever."
+        ),
+    ),
+    # ── MEDIUM  (250 – 600 chars) ────────────────────────────────────────────
+    (
+        600,
+        (
+            "I have been using this moisturiser for about two weeks now and I am "
+            "genuinely impressed. The texture is lightweight and absorbs into my "
+            "skin within minutes without leaving any greasy residue. I have "
+            "combination skin and it keeps my T-zone balanced without drying out "
+            "my cheeks. The packaging is sturdy and hygienic. It did sting "
+            "slightly the first time but that went away after day two. Would "
+            "recommend for sensitive skin types and will repurchase."
+        ),
+        (
+            "Absolutely love this product! It is amazing and I recommend it to "
+            "all my friends and family. The quality is outstanding and the price "
+            "is great. Shipping was super fast and the packaging was beautiful. "
+            "This is the best beauty product I have ever used in my life. "
+            "Everyone should buy this. Cannot imagine my routine without it now. "
+            "Will definitely order again and again. Seller is fantastic."
+        ),
+    ),
+    # ── LONG  (> 600 chars) ─────────────────────────────────────────────────
+    (
+        999_999,
+        (
+            "I have now finished my second bottle of this serum and feel "
+            "qualified to give a detailed review. I have dry, acne-prone skin "
+            "and have tried many products over the years with mixed results. "
+            "I started noticing a difference in my skin tone after about ten "
+            "days of consistent morning and evening application. The formula "
+            "layers well under sunscreen and does not pill under makeup. "
+            "One thing worth mentioning is that the dropper dispenses a bit "
+            "too much product at once, so I have learned to tilt the bottle "
+            "gently rather than squeeze. The scent is faint and herbal, which "
+            "I personally enjoy, though people sensitive to fragrance may want "
+            "to patch test first. After six weeks my hyperpigmentation from "
+            "old breakouts has visibly faded and my skin looks more even. "
+            "I would rate this as one of the better serums I have tried at "
+            "this price point and will continue buying it."
+        ),
+        (
+            "This product is absolutely incredible and I cannot believe how "
+            "good it is. From the moment I opened the package I knew this was "
+            "going to be special. The quality is unmatched and the results "
+            "speak for themselves. I have told everyone I know about this "
+            "product and they all agree it is the best thing they have ever "
+            "tried. The company clearly cares about its customers and the "
+            "customer service was outstanding when I reached out with a "
+            "question. Shipping was lightning fast and the packaging was "
+            "elegant and premium. I will be ordering multiple bottles to give "
+            "as gifts because everyone deserves to experience this. I cannot "
+            "recommend it highly enough. Five stars is not enough. This "
+            "product has changed my life and I will never use anything else. "
+            "Buy it now, you will not regret it. Amazing, perfect, wonderful."
+        ),
+    ),
+]
 
 _minilm_model: SentenceTransformer | None = None
-_minilm_genuine_emb: torch.Tensor | None  = None
-_minilm_fake_emb:    torch.Tensor | None  = None
+# Pre-encoded anchor tensors: list of (genuine_emb, fake_emb) per tier
+_minilm_anchor_embs: list[tuple[torch.Tensor, torch.Tensor]] = []
 
 
 def _get_minilm():
-    global _minilm_model, _minilm_genuine_emb, _minilm_fake_emb
+    global _minilm_model, _minilm_anchor_embs
     if _minilm_model is None:
         logger.info("ai.semantic_pipeline: loading MiniLM model '%s' …", _MINILM_MODEL_ID)
         _minilm_model = SentenceTransformer(_MINILM_MODEL_ID)
-        _minilm_genuine_emb = _minilm_model.encode(_GENUINE_ANCHOR, convert_to_tensor=True)
-        _minilm_fake_emb    = _minilm_model.encode(_FAKE_ANCHOR,    convert_to_tensor=True)
-        logger.info("ai.semantic_pipeline: MiniLM model ready.")
+        _minilm_anchor_embs = [
+            (
+                _minilm_model.encode(genuine, convert_to_tensor=True),
+                _minilm_model.encode(fake,    convert_to_tensor=True),
+            )
+            for _, genuine, fake in _ANCHOR_TIERS
+        ]
+        logger.info("ai.semantic_pipeline: MiniLM model ready (%d anchor tiers).", len(_ANCHOR_TIERS))
     return _minilm_model
 
 
+def _pick_anchor_tier(combined: str) -> tuple[torch.Tensor, torch.Tensor]:
+    """Return the (genuine_emb, fake_emb) pair whose length bucket matches the review."""
+    n = len(combined)
+    for i, (threshold, _, _) in enumerate(_ANCHOR_TIERS):
+        if n < threshold:
+            return _minilm_anchor_embs[i]
+    return _minilm_anchor_embs[-1]
+
+
 def _score_minilm(combined: str) -> float:
-    model = _get_minilm()
-    emb  = model.encode(combined, convert_to_tensor=True)
-    sims = st_util.cos_sim(emb, torch.stack([_minilm_genuine_emb, _minilm_fake_emb]))[0]  # type: ignore[arg-type]
+    _get_minilm()
+    genuine_emb, fake_emb = _pick_anchor_tier(combined)
+    emb   = _minilm_model.encode(combined, convert_to_tensor=True)  # type: ignore[union-attr]
+    sims  = st_util.cos_sim(emb, torch.stack([genuine_emb, fake_emb]))[0]
     probs = torch.softmax(sims, dim=0)
     return round(probs[0].item(), 4)
 
