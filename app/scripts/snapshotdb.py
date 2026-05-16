@@ -4,9 +4,13 @@
 
 Steps:
   1. Run generate_seed.py  → writes app/scripts/snapshot_seed.sql
-  2. Copy the default product photo into every product's media folder
+  2. Ensure seeded product image files exist (archive → default placeholder;
+     never overwrites files already on disk)
   3. Execute snapshot_seed.sql against the database
   4. Reindex OpenSearch
+
+Note: `make migratedb` only applies schema migrations and does not touch
+      data/product-photos/. Photo files are managed here (snapshotdb) only.
 
 Usage:
     python app/scripts/snapshotdb.py
@@ -40,12 +44,17 @@ SEEDED_PRODUCT_IDS = range(1, 296)
 
 
 def prepare_product_photos() -> None:
-    """Copy actual product photos from the archive into data/product-photos/products/.
+    """Ensure seeded product images exist under data/product-photos/products/.
 
     Archive layout:  archive/media/media/products/{n}/{n}.jpg  (IDs 1-295)
     Destination:     data/product-photos/products/{n}/{n}.jpg
 
-    Falls back to the default placeholder photo if the archive image is missing.
+    For each product, copies only when the destination file is missing:
+      1. archive image, if present
+      2. else data/default-photos/blackpink.jpg
+
+    Existing files are left unchanged so re-running snapshotdb (or running
+    migratedb separately) does not replace custom or previously copied photos.
     """
     has_archive = ARCHIVE_PHOTOS_SRC.is_dir()
     has_default = DEFAULT_PRODUCT_PHOTO.is_file()
@@ -58,10 +67,15 @@ def prepare_product_photos() -> None:
 
     copied = 0
     fallback = 0
+    skipped = 0
     for n in SEEDED_PRODUCT_IDS:
         dest_dir = PRODUCT_PHOTOS_DEST / str(n)
         dest_dir.mkdir(parents=True, exist_ok=True)
         dest = dest_dir / f"{n}.jpg"
+
+        if dest.is_file():
+            skipped += 1
+            continue
 
         src = ARCHIVE_PHOTOS_SRC / str(n) / f"{n}.jpg"
         if src.is_file():
@@ -73,7 +87,10 @@ def prepare_product_photos() -> None:
         else:
             print(f"warning: no photo for product {n}, skipping")
 
-    print(f"snapshotdb: photos — {copied} from archive, {fallback} placeholder fallbacks")
+    print(
+        f"snapshotdb: photos — {copied} from archive, {fallback} default placeholders, "
+        f"{skipped} already present (kept)"
+    )
 
 
 def _pg_dsn(url: str) -> str:

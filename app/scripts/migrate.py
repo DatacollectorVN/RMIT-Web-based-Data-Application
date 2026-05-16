@@ -11,6 +11,9 @@ Usage:
     python app/scripts/migrate.py reapply      # drop all and re-apply from scratch
     python app/scripts/migrate.py status       # show applied / pending migrations
 
+Schema-only: does not read or write data/product-photos/. To seed DB rows and
+ensure missing image files exist, use snapshotdb.py (make snapshotdb) instead.
+
 Environment variables (loaded from .env):
     DATABASE_URL  -- PostgreSQL connection string
 """

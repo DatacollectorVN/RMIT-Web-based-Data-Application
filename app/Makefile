@@ -28,7 +28,7 @@ upgrade:
 # Database migrations (app/scripts/migrate.py)
 # ──────────────────────────────────────────────
 
-# Apply all pending migrations.
+# Apply all pending migrations (schema only; does not touch product-photos/).
 migratedb:
 	uv run python scripts/migrate.py up
 
