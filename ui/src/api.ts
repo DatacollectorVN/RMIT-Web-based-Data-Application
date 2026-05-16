@@ -65,6 +65,7 @@ function mapReview(raw: RawReview): Review {
     created_at:     raw.created_at != null ? String(raw.created_at) : undefined,
     updated_at:     raw.updated_at != null ? String(raw.updated_at) : undefined,
     ai_label:       raw.ai_label    as boolean | null | undefined,
+    ai_model:       raw.ai_model != null ? String(raw.ai_model) : null,
     final_label:    raw.final_label as boolean | null | undefined,
     status:         raw.status != null ? String(raw.status) : undefined,
   };

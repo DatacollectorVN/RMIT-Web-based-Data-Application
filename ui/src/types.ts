@@ -63,6 +63,7 @@ export type Review = {
   updated_at?: string;
   product_name?: string;
   ai_label?: boolean | null;
+  ai_model?: string | null;
   final_label?: boolean | null;
   status?: string;
 };

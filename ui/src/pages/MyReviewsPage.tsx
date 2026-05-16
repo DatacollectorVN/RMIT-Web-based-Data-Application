@@ -172,17 +172,29 @@ function ReviewCard({ review, authUser, onRefresh }: { review: Review; authUser:
       <p style={{ margin: "0 0 12px", fontSize: 13, color: "#455146", lineHeight: 1.6 }}>{review.review_text}</p>
 
       {/* ── AI / Human label badges ── */}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
-        {review.ai_label !== undefined && review.ai_label !== null && (
-          <Badge label={`AI: ${review.ai_label ? "Buyer" : "Non-Buyer"}`} green={review.ai_label} prefix="🤖" />
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
+        {(review.ai_label !== undefined && review.ai_label !== null) && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Badge label={`AI: ${review.ai_label ? "Buyer" : "Non-Buyer"}`} green={review.ai_label} prefix="🤖" />
+            {review.ai_model && (
+              <span style={{ fontSize: 10, color: "#456080", border: "1px solid #B8C8D8", borderRadius: 20, padding: "2px 10px", background: "#EEF3FA" }}>
+                Model: {review.ai_model}
+              </span>
+            )}
+          </div>
         )}
         {review.final_label !== undefined && review.final_label !== null && (
-          <Badge label={`Final: ${review.final_label ? "Verified Buyer" : "Non-Buyer"}`} green={review.final_label} prefix="✅" />
+          <div>
+            <Badge label={`Final: ${review.final_label ? "Verified Buyer" : "Non-Buyer"}`} green={review.final_label} prefix="✅" />
+          </div>
         )}
         {review.status && (
-          <span style={{ fontSize: 10, color: "#687860", border: "1px solid #D4DCC8", borderRadius: 20, padding: "2px 10px" }}>
-            {review.status}
-          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: "#687860" }}>Status:</span>
+            <span style={{ fontSize: 10, color: "#687860", border: "1px solid #D4DCC8", borderRadius: 20, padding: "2px 10px" }}>
+              {review.status}
+            </span>
+          </div>
         )}
       </div>
 

@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).parent
-CSV_FILE   = SCRIPT_DIR.parent / "archive" / "cosmetics_beauty_products_reviews.csv"
+CSV_FILE   = SCRIPT_DIR / "cosmetics_beauty_products_reviews.csv"
 OUT_FILE   = SCRIPT_DIR / "snapshot_seed.sql"
 
 DUMMY_HASH = "$2a$10$7QJjzq3Y2G4d6R2iK5D6UOm2Gx1nA1m5aG7J3x4m0Y8pK9xT1Jp1W"

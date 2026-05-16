@@ -22,6 +22,7 @@ def _review_response(review: Review, user_name: str | None) -> ReviewResponse:
         rating=review.rating,
         status=review.status,
         ai_label=review.ai_label,
+        ai_model=review.ai_model,
         final_label=review.final_label,
         created_at=review.created_at,
         updated_at=review.updated_at,

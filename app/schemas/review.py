@@ -52,6 +52,7 @@ class ReviewResponse(BaseModel):
     rating: int
     status: str
     ai_label: bool | None
+    ai_model: str | None = None
     final_label: bool | None
     created_at: datetime
     updated_at: datetime
