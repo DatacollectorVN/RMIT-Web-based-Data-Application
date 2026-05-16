@@ -1,11 +1,8 @@
 # Beauty App — RMIT Web-based Data Application
 
-Phase 1 monorepo. This repository implements a unified Python `app` service (FastAPI + SQLAlchemy + opensearch-py). Entity IDs are **integers** (BIGINT) in PostgreSQL and in API JSON. Phase 1 does **not** require JWT or bearer tokens. See SPEC-00 (constitution v2.1).
+Phase 1 monorepo. This repository implements a unified Python `app` service (FastAPI + SQLAlchemy + opensearch-py). Entity IDs are **integers** (BIGINT) in PostgreSQL and in API JSON. 
 
-## Specifications
-
-- Constitution (SPEC-00): `.specify/memory/constitution.md`
-- Integer IDs + public API: `specs/20260511-092104-int-ids-remove-jwt/`
+Phase 1 does **not** require JWT or bearer tokens. See SPEC-00 (constitution v2.1).
 
 ## Repository layout
 
@@ -32,17 +29,7 @@ Phase 1 monorepo. This repository implements a unified Python `app` service (Fas
 
 ## Local development
 
-```bash
-cp .env.example .env          # edit credentials
-docker compose up -d          # starts app, postgres, opensearch
-make migratedb                # apply schema migrations
-make snapshotdb               # load sample data
-make opensearchinit           # create products index
-make reindexproducts          # upload products to OpenSearch
-curl http://localhost:8080/api/v1/health   # → {"data":{"status":"ok"}}
-```
-
-Full step-by-step: `specs/20260510-145455-python-app-consolidation/quickstart.md`
+For full setup instructions, see **[docs/getting-started.md](docs/getting-started.md)**.
 
 ## Notes
 
