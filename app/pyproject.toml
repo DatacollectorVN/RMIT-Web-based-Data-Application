@@ -27,6 +27,7 @@ dependencies = [
     "pyspellchecker>=0.8,<1",
     "thefuzz>=0.22,<1",
     "wordfreq>=3.0,<4",
+    "gdown>=5.2,<6",
 ]
 
 

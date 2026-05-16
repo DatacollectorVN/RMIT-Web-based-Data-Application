@@ -8,12 +8,13 @@ This guide walks a developer through setting up the RMIT Beauty App from scratch
 
 1. [Prerequisites](#1-prerequisites)
 2. [Clone the Repository](#2-clone-the-repository)
-3. [Configure Environment Variables](#3-configure-environment-variables)
-4. [Path A — Docker (recommended)](#4-path-a--docker-recommended)
-5. [Path B — Local Dev Server (hot-reload)](#5-path-b--local-dev-server-hot-reload)
-6. [Verify Everything Works](#6-verify-everything-works)
-7. [Useful Make Targets](#7-useful-make-targets)
-8. [Troubleshooting](#8-troubleshooting)
+3. [Download ML Model File](#3-download-ml-model-file)
+4. [Configure Environment Variables](#4-configure-environment-variables)
+5. [Path A — Docker (recommended)](#5-path-a--docker-recommended)
+6. [Path B — Local Dev Server (hot-reload)](#6-path-b--local-dev-server-hot-reload)
+7. [Verify Everything Works](#7-verify-everything-works)
+8. [Useful Make Targets](#8-useful-make-targets)
+9. [Troubleshooting](#9-troubleshooting)
 
 ---
 
@@ -122,7 +123,53 @@ cd RMIT-Web-based-Data-Application
 
 ---
 
-## 3. Configure Environment Variables
+## 3. Download ML Model File
+
+The trained Random Forest classifier (`rf_pipeline.pkl`) is too large for Git and is hosted on Google Drive. You must fetch it once before starting the app (or before `docker compose build` so the file is copied into the image).
+
+> **On disk:** `app/ai/model/rf_pipeline.pkl`  
+> **Browser:** [rf_pipeline.pkl on Google Drive](https://drive.google.com/file/d/15C3q-VN5BIO1sb-VwHVBH-QSVEaDxVTY/view?usp=drive_link)
+
+### Option A — script (recommended)
+
+From the **repo root**, install Python deps (includes `gdown`) then run the downloader:
+
+```bash
+make install
+make downloadrfmodel
+```
+
+Equivalent without Make:
+
+```bash
+cd app && uv sync --frozen && uv run python scripts/download_rf_model.py
+```
+
+- Skips the download if the file already exists; use `--force` to overwrite:
+  ```bash
+  cd app && uv run python scripts/download_rf_model.py --force
+  ```
+- For **Docker**: run `make downloadrfmodel` on the host **before** `docker compose build` so `app/ai/model/rf_pipeline.pkl` exists when the image is built.
+
+### Option B — manual `gdown` CLI
+
+```bash
+make install
+mkdir -p app/ai/model
+cd app && uv run gdown 15C3q-VN5BIO1sb-VwHVBH-QSVEaDxVTY -O ai/model/rf_pipeline.pkl
+```
+
+### Option C — manual download in the browser
+
+1. Open the [Google Drive link](https://drive.google.com/file/d/15C3q-VN5BIO1sb-VwHVBH-QSVEaDxVTY/view?usp=drive_link).
+2. Click **Download**.
+3. Move the file to `app/ai/model/rf_pipeline.pkl` (create the folder if needed).
+
+> **Why is this file gitignored?** Binary model files are large; `.gitignore` lists `app/ai/model/rf_pipeline.pkl` on purpose so clones stay small.
+
+---
+
+## 4. Configure Environment Variables
 
 The application reads all configuration from a `.env` file in the repo root.
 
@@ -154,9 +201,11 @@ ENV=development
 
 ---
 
-## 4. Path A — Docker (recommended)
+## 5. Path A — Docker (recommended)
 
-This path starts the full stack (PostgreSQL + OpenSearch + FastAPI + React) in Docker. No Python or Node installation required on the host.
+This path starts the full stack (PostgreSQL + OpenSearch + FastAPI + React) in Docker. No Python or Node installation required on the host for the UI/API containers themselves.
+
+`rf_pipeline.pkl` is not in Git. **Before the first `docker compose build`**, either follow [Section 3](#3-download-ml-model-file) on the host (`make install && make downloadrfmodel`) so the file exists under `app/ai/model/`, or place it there manually after downloading from Google Drive. Otherwise the image will start without that file and the counting-predict endpoint may fail.
 
 ### Step 1 — Build and start all services
 
@@ -246,7 +295,7 @@ curl http://localhost:8080/api/v1/health
 
 ---
 
-## 5. Path B — Local Dev Server (hot-reload)
+## 6. Path B — Local Dev Server (hot-reload)
 
 Use this path when actively developing the FastAPI backend. The app runs directly on your machine with `--reload`, so changes to Python files restart the server immediately. PostgreSQL and OpenSearch still run in Docker.
 
@@ -266,6 +315,12 @@ make install
 ```
 
 `uv` creates `app/.venv` and installs all packages from `app/uv.lock`.
+
+### Step 2b — Download the RF classifier model (once per clone)
+
+```bash
+make downloadrfmodel
+```
 
 ### Step 3 — Apply migrations and seed data
 
@@ -299,7 +354,7 @@ The React dev server starts at `http://localhost:5173` and proxies API requests 
 
 ---
 
-## 6. Verify Everything Works
+## 7. Verify Everything Works
 
 Run these checks after either setup path to confirm all services are healthy.
 
@@ -360,7 +415,7 @@ Open **http://localhost:8080/docs** in your browser for the full Swagger UI with
 
 ---
 
-## 7. Useful Make Targets
+## 8. Useful Make Targets
 
 All targets are run from the **repo root** unless noted.
 
@@ -374,6 +429,7 @@ All targets are run from the **repo root** unless noted.
 | `make migratedbreapply` | Drop all migrations and reapply from scratch |
 | `make migratestatus` | Show which migrations are applied / pending |
 | `make snapshotdb` | Load sample data into the database |
+| `make downloadrfmodel` | Download `rf_pipeline.pkl` from Google Drive into `app/ai/model/` |
 | `make opensearchinit` | Create the OpenSearch products index (idempotent) |
 | `make reindexproducts` | Encode all products and upload vectors to OpenSearch |
 | `make relevancecheck` | Run keyword relevance checks against OpenSearch |
@@ -384,7 +440,7 @@ All targets are run from the **repo root** unless noted.
 
 ---
 
-## 8. Troubleshooting
+## 9. Troubleshooting
 
 ### OpenSearch container fails to start
 
@@ -485,3 +541,26 @@ Then verify the index has documents:
 curl http://localhost:9200/products/_count
 # → {"count": 150, ...}
 ```
+
+---
+
+### AI classifier returns 500 — "rf_pipeline.pkl not found"
+
+The trained model file was not downloaded. Run the downloader (after `make install`):
+
+```bash
+make downloadrfmodel
+```
+
+Then rebuild/restart so the app sees the file:
+
+```bash
+# Docker (rebuild if the image was built without the file)
+docker compose build app
+docker compose up -d app
+
+# Local dev server — Ctrl+C then:
+make dev
+```
+
+See [Section 3](#3-download-ml-model-file) for details and `--force`.

@@ -8,7 +8,7 @@
 
 .PHONY: install \
 	migratedb migratedbdown1 migratedbreapply migratestatus \
-	snapshotdb \
+	snapshotdb downloadrfmodel \
 	reindexproducts relevancecheck
 
 # ──────────────────────────────────────────────
@@ -51,6 +51,10 @@ migratestatus:
 # Load snapshot/sample data into the current database.
 snapshotdb:
 	uv run python scripts/snapshotdb.py
+
+# Download rf_pipeline.pkl from Google Drive into app/ai/model/ (gitignored).
+downloadrfmodel:
+	uv run python scripts/download_rf_model.py
 
 # ──────────────────────────────────────────────
 # OpenSearch (app/scripts/reindex_products.py)

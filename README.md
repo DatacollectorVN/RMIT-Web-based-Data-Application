@@ -10,7 +10,7 @@ Phase 1 does **not** require JWT or bearer tokens. See SPEC-00 (constitution v2.
 | --- | --- |
 | `app/` | Unified Python service — FastAPI REST API + SQLAlchemy ORM + opensearch-py + AI/ML |
 | `app/migrations/` | SQL schema evolution files (applied by `app/scripts/migrate.py`) |
-| `app/scripts/` | Operational scripts: `migrate.py`, `snapshotdb.py`, `reindex_products.py`, `search_relevance_check.py` |
+| `app/scripts/` | Operational scripts: `migrate.py`, `snapshotdb.py`, `download_rf_model.py`, `reindex_products.py`, `search_relevance_check.py` |
 | `opensearch/` | Index mapping JSON and idempotent `init.sh` |
 | `scripts/` | Legacy Go scripts (deprecated — see `app/scripts/` for Python equivalents) |
 
@@ -30,6 +30,9 @@ Phase 1 does **not** require JWT or bearer tokens. See SPEC-00 (constitution v2.
 ## Local development
 
 For full setup instructions, see **[docs/getting-started.md](docs/getting-started.md)**.
+
+## Demo website
+[Glowshow](https://demo-rmit.loginextech.com/)
 
 ## Notes
 

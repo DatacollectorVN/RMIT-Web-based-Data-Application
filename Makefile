@@ -8,7 +8,7 @@
 
 .PHONY: install upgrade \
 	migratedb migratedbdown1 migratedb-down-1 migratedbreapply migratestatus \
-	snapshotdb \
+	snapshotdb downloadrfmodel download-rf-model \
 	opensearchinit opensearch-init \
 	reindexproducts reindex-products \
 	indexproducts index-products \
@@ -51,6 +51,12 @@ migratestatus:
 
 snapshotdb:
 	$(MAKE) -C app snapshotdb
+
+downloadrfmodel:
+	$(MAKE) -C app downloadrfmodel
+
+# Alias (legacy dashed name).
+download-rf-model: downloadrfmodel
 
 # ──────────────────────────────────────────────
 # OpenSearch
